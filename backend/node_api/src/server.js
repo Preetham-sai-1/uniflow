@@ -51,7 +51,7 @@ async function start() {
   process.on('SIGINT', () => shutdown('SIGINT'));
 
   // Catch unhandled promise rejections — log and exit so the process
-  // restarts cleanly (under a process manager like PM2 or Railway).
+  // restarts cleanly (under a process manager like PM2, Render, or Docker).
   process.on('unhandledRejection', (reason) => {
     console.error('Unhandled promise rejection:', reason);
     shutdown('unhandledRejection');
