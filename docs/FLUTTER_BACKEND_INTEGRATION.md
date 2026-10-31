@@ -658,6 +658,45 @@ The foundational client networking, secure session persistence, role mapping, an
    - React production build: Zero errors (`vite build` in 2.23s).
    - Flutter analyzer: Zero issues (`flutter analyze --no-pub`).
 
+### Phase 5: Administrator Oversight & Analytics [COMPLETED]
+
+The full administrative governance, global metric aggregation, institutional request audit trail, and executive seal authorization are fully integrated:
+
+1. **Admin Workflow Service (`lib/core/services/admin_workflow_service.dart`)**:
+   - `fetchAdminStats()`: Dispatches authenticated request to `GET /api/admin/stats` with role authorization header, deserializing system-wide request summaries, equipment bookings, and category breakdowns.
+   - `fetchAdminRequests({status, serviceId, page, limit})`: Queries institutional requests with URL query filtering, supporting pagination and mapping backend models.
+   - Access Control: Enforces 403 Forbidden handling for non-admin accounts attempt to reach administrative routes.
+
+2. **Domain Models (`lib/models/admin_stats.dart`)**:
+   - `AdminStats`, `RequestCounts`, `BookingCounts`, `ServiceStatItem`: Strict typing of backend analytics response.
+   - Computed properties: `approvalRate`, `totalApplications`, `pendingExecutiveSignOff`, `approvedCount`, and `rejectedCount` computed dynamically from live backend data.
+
+3. **State Management Integration (`lib/core/state/app_state.dart`)**:
+   - Reactive admin fields: `_adminStats`, `_isLoadingAdminStats`, `_hasLoadedAdminStats`, `_adminStatsError`, `_adminRequests`, `_isLoadingAdminRequests`, `_hasLoadedAdminRequests`, `_adminRequestsError`, pagination counters.
+   - `adminQueue`: Authoritatively filters pending executive sign-off items (`status == JourneyStatus.adminApproval`).
+   - `loadAdminStats()` and `loadAdminRequests()`: Support forced refresh and prevent redundant network round-trips.
+   - State Synchronization: `_syncActionedRequest()` updates `_adminRequests` and evicts sealed requests from `adminQueue` upon final approval/rejection.
+   - `logout()`: Complete wipe of admin data and cached statistics.
+
+4. **Executive Dashboard (`lib/views/admin/admin_dashboard_view.dart`)**:
+   - High-Level KPIs: Live metrics for Total Applications, Awaiting Final Seal, Approval Rate, and Institutional SLA Baseline.
+   - Pending Executive Authorization Queue: Lists requests requiring Dean/Executive seal with student and form highlights. Direct "Executive Seal & Approve" opens `ReviewDecisionDialog(isAdmin: true)`.
+   - Recent Campus Journey Activity: Real-time institutional log of recent requests.
+   - Security & UX: Explicit 403 access control screen when accessed by unauthorized roles (student/staff), error banners with retry buttons, and queue refresh.
+
+5. **Campus Analytics & Intelligence (`lib/views/admin/admin_analytics_view.dart`)**:
+   - Service Volume Breakdown: Dynamically plots volume distributions across services using backend `byService` data.
+   - Workflow Status Health: Visual breakdown of approved/completed, in-progress/pending, and rejected requests.
+   - Institutional Governance & SLA Standards: Transparent presentation of campus-wide turnaround benchmarks with audit trail notes.
+   - Role Security: 403 access restriction screen for unauthorized users.
+
+6. **Automated Verification**:
+   - Flutter tests: 72/72 tests passing across 7 suites (`test/admin_workflow_integration_test.dart`, `test/staff_workflow_integration_test.dart`, `test/request_history_and_tracking_test.dart`, `test/student_services_test.dart`, `test/auth_integration_test.dart`, `test/widget_test.dart`, `test/responsiveness_test.dart`).
+   - Backend tests: 84/84 tests passing (`tests/*.test.js`).
+   - React frontend tests: 27/27 tests passing (`frontend/react_app/src/test/*.jsx`).
+   - React production build: Zero errors (`vite build` in 1.92s).
+   - Flutter analyzer: Zero issues (`flutter analyze --no-pub`).
+
 ---
 
 ## 11. Recommended Phased Implementation Order

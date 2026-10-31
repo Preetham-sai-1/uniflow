@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/state/app_state.dart';
 import '../../models/journey_request.dart';
+import '../../models/role.dart';
 import '../../widgets/metric_card.dart';
 import '../../widgets/responsive_container.dart';
 import '../../widgets/status_badge.dart';
 import '../staff/review_dialog.dart';
 import '../student/request_detail_view.dart';
 
-class AdminDashboardView extends StatelessWidget {
+class AdminDashboardView extends StatefulWidget {
   final AppState appState;
   final ValueChanged<int> onNavigateTab;
 
@@ -19,17 +20,94 @@ class AdminDashboardView extends StatelessWidget {
   });
 
   @override
+  State<AdminDashboardView> createState() => _AdminDashboardViewState();
+}
+
+class _AdminDashboardViewState extends State<AdminDashboardView> {
+  @override
+  void initState() {
+    super.initState();
+    _fetchData();
+  }
+
+  void _fetchData({bool forceRefresh = false}) {
+    if (widget.appState.isAuthenticated &&
+        widget.appState.currentRole == UserRole.admin) {
+      widget.appState.loadAdminStats(forceRefresh: forceRefresh);
+      widget.appState.loadAdminRequests(forceRefresh: forceRefresh);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: appState,
+      animation: widget.appState,
       builder: (context, _) {
-        final allRequests = appState.requests;
+        final appState = widget.appState;
+
+        // Role verification check: Admin role required
+        if (appState.currentRole != UserRole.admin) {
+          return ResponsiveContainer(
+            title: 'Administrative Executive Portal',
+            subtitle: 'Campus-wide governance and operational oversight.',
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(40),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.gpp_bad_rounded,
+                      size: 56, color: AppColors.statusRejected),
+                  SizedBox(height: 16),
+                  Text(
+                    'Administrative Access Required',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                      color: AppColors.primaryNavy,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'This portal requires verified administrative privileges. Your current role is not authorized to inspect institutional stats or execute executive seals.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final allRequests = appState.adminRequests;
         final adminQueue = appState.adminQueue;
-        final approvedCount =
-            allRequests.where((r) => r.status == JourneyStatus.approved).length;
-        final approvalRate = allRequests.isEmpty
-            ? 0
-            : ((approvedCount / allRequests.length) * 100).round();
+        final stats = appState.adminStats;
+
+        final totalApplications =
+            stats != null ? stats.totalApplications : allRequests.length;
+        final awaitingFinalSeal = stats != null
+            ? (stats.pendingExecutiveSignOff > 0
+                ? stats.pendingExecutiveSignOff
+                : adminQueue.length)
+            : adminQueue.length;
+        final approvedCount = stats != null
+            ? stats.approvedCount
+            : allRequests
+                .where((r) => r.status == JourneyStatus.approved)
+                .length;
+        final approvalRate = stats != null
+            ? stats.approvalRate
+            : (allRequests.isEmpty
+                ? 0
+                : ((approvedCount / allRequests.length) * 100).round());
 
         return ResponsiveContainer(
           title: 'Administrative Executive Portal',
@@ -38,6 +116,45 @@ class AdminDashboardView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Error Banner with Retry
+              if (appState.adminStatsError != null ||
+                  appState.adminRequestsError != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 20),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.statusRejected.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline_rounded,
+                          color: AppColors.statusRejected, size: 22),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          appState.adminStatsError ??
+                              appState.adminRequestsError ??
+                              'Failed to load administrative data.',
+                          style: const TextStyle(
+                            color: AppColors.statusRejected,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _fetchData(forceRefresh: true),
+                        child: const Text('Retry',
+                            style: TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                    ],
+                  ),
+                ),
+
               // Admin High-level KPIs
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -56,14 +173,14 @@ class AdminDashboardView extends StatelessWidget {
                     children: [
                       MetricCard(
                         title: 'Total Applications',
-                        value: allRequests.length.toString().padLeft(2, '0'),
+                        value: totalApplications.toString().padLeft(2, '0'),
                         subtitle: 'Across all departments',
                         icon: Icons.hub_rounded,
                         accentColor: AppColors.primaryBlue,
                       ),
                       MetricCard(
                         title: 'Awaiting Final Seal',
-                        value: adminQueue.length.toString().padLeft(2, '0'),
+                        value: awaitingFinalSeal.toString().padLeft(2, '0'),
                         subtitle: 'Requires Dean sign-off',
                         icon: Icons.approval_rounded,
                         accentColor: AppColors.statusPending,
@@ -78,7 +195,7 @@ class AdminDashboardView extends StatelessWidget {
                       const MetricCard(
                         title: 'SLA Adherence',
                         value: '98.4%',
-                        subtitle: 'Under standard deadline',
+                        subtitle: 'Institutional baseline',
                         icon: Icons.speed_rounded,
                         accentColor: AppColors.statusPayment,
                       ),
@@ -89,7 +206,7 @@ class AdminDashboardView extends StatelessWidget {
 
               const SizedBox(height: 32),
 
-              // Pending Executive Approval Queue
+              // Pending Executive Approval Queue Header
               Wrap(
                 alignment: WrapAlignment.spaceBetween,
                 crossAxisAlignment: WrapCrossAlignment.center,
@@ -104,16 +221,36 @@ class AdminDashboardView extends StatelessWidget {
                       color: AppColors.primaryNavy,
                     ),
                   ),
-                  TextButton.icon(
-                    icon: const Icon(Icons.analytics_outlined, size: 16),
-                    label: const Text('View Full Analytics'),
-                    onPressed: () => onNavigateTab(2), // Analytics Tab
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 4,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.refresh_rounded, size: 20),
+                        tooltip: 'Refresh queue',
+                        onPressed: () => _fetchData(forceRefresh: true),
+                      ),
+                      TextButton.icon(
+                        icon: const Icon(Icons.analytics_outlined, size: 16),
+                        label: const Text('View Full Analytics'),
+                        onPressed: () =>
+                            widget.onNavigateTab(2), // Analytics Tab
+                      ),
+                    ],
                   ),
                 ],
               ),
               const SizedBox(height: 12),
 
-              if (adminQueue.isEmpty)
+              if (appState.isLoadingAdminRequests &&
+                  !appState.hasLoadedAdminRequests)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (adminQueue.isEmpty)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(36),
@@ -176,7 +313,7 @@ class AdminDashboardView extends StatelessWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      '${req.serviceType.title} • ${req.id}',
+                                      '${req.serviceType.title} • ${req.requestNumber}',
                                       style: const TextStyle(
                                           fontWeight: FontWeight.w800,
                                           fontSize: 15,
@@ -245,7 +382,7 @@ class AdminDashboardView extends StatelessWidget {
                                     context,
                                     MaterialPageRoute(
                                       builder: (_) => RequestDetailView(
-                                        requestId: req.id,
+                                        requestId: req.backendId ?? req.id,
                                         appState: appState,
                                       ),
                                     ),
@@ -302,49 +439,62 @@ class AdminDashboardView extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: AppColors.borderSubtle),
                 ),
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: allRequests.take(4).length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final req = allRequests[index];
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 18, vertical: 6),
-                      leading: CircleAvatar(
-                        backgroundColor: const Color(0xFFEFF6FF),
-                        child: Icon(req.serviceType.icon,
-                            color: AppColors.primaryBlue, size: 18),
-                      ),
-                      title: Text(
-                        '${req.serviceType.title} (${req.id})',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            color: AppColors.primaryNavy),
-                      ),
-                      subtitle: Text(
-                        '${req.studentName} • ${req.department}',
-                        style: const TextStyle(
-                            fontSize: 11, color: AppColors.textSecondary),
-                      ),
-                      trailing:
-                          StatusBadge(status: req.status, isCompact: true),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => RequestDetailView(
-                              requestId: req.id,
-                              appState: appState,
+                child: allRequests.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.all(24.0),
+                        child: Center(
+                          child: Text(
+                            'No campus journeys registered yet.',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 13,
                             ),
                           ),
-                        );
-                      },
-                    );
-                  },
-                ),
+                        ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: allRequests.take(6).length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final req = allRequests[index];
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 18, vertical: 6),
+                            leading: CircleAvatar(
+                              backgroundColor: const Color(0xFFEFF6FF),
+                              child: Icon(req.serviceType.icon,
+                                  color: AppColors.primaryBlue, size: 18),
+                            ),
+                            title: Text(
+                              '${req.serviceType.title} (${req.requestNumber})',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                  color: AppColors.primaryNavy),
+                            ),
+                            subtitle: Text(
+                              '${req.studentName} • ${req.department}',
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppColors.textSecondary),
+                            ),
+                            trailing: StatusBadge(
+                                status: req.status, isCompact: true),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => RequestDetailView(
+                                    requestId: req.backendId ?? req.id,
+                                    appState: appState,
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
               ),
             ],
           ),

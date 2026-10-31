@@ -288,19 +288,32 @@ class JourneyRequest {
   }
 
   factory JourneyRequest.fromJson(Map<String, dynamic> json) {
-    final serviceData = json['service'] as Map<String, dynamic>?;
-    final slug =
-        serviceData?['slug'] as String? ?? json['serviceSlug'] as String? ?? '';
+    final serviceData = (json['service'] is Map<String, dynamic>)
+        ? json['service'] as Map<String, dynamic>
+        : (json['serviceId'] is Map<String, dynamic>
+            ? json['serviceId'] as Map<String, dynamic>
+            : null);
+    final slug = serviceData?['slug'] as String? ??
+        json['serviceSlug'] as String? ??
+        json['serviceCategory'] as String? ??
+        '';
     final serviceType = ServiceType.fromSlug(slug);
-    final serviceName = serviceData?['name'] as String? ?? serviceType.title;
+    final serviceName = serviceData?['name'] as String? ??
+        json['serviceName'] as String? ??
+        serviceType.title;
 
-    final studentData = json['student'] as Map<String, dynamic>?;
+    final studentData = (json['student'] is Map<String, dynamic>)
+        ? json['student'] as Map<String, dynamic>
+        : (json['studentId'] is Map<String, dynamic>
+            ? json['studentId'] as Map<String, dynamic>
+            : null);
     final studentId = studentData?['_id'] as String? ??
         studentData?['id'] as String? ??
-        json['studentId'] as String? ??
-        '';
+        (json['studentId'] is String ? json['studentId'] as String : '');
     final studentName = studentData?['name'] as String? ?? 'Student';
-    final studentRoll = studentData?['studentId'] as String? ?? '';
+    final studentRoll = studentData?['studentId'] as String? ??
+        studentData?['rollNumber'] as String? ??
+        '';
 
     String dept = 'General';
     if (serviceData?['responsibleDepartment'] is Map<String, dynamic>) {

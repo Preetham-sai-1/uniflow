@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import '../../models/admin_stats.dart';
 import '../../models/journey_request.dart';
 import '../../models/role.dart';
 import '../../models/service_item.dart';
 import '../api/api_exceptions.dart';
 import '../auth/auth_service.dart';
+import '../services/admin_workflow_service.dart';
 import '../services/staff_workflow_service.dart';
 import '../services/student_workflow_service.dart';
 
@@ -11,6 +13,7 @@ class AppState extends ChangeNotifier {
   final AuthService authService;
   final StudentWorkflowService studentWorkflowService;
   final StaffWorkflowService staffWorkflowService;
+  final AdminWorkflowService adminWorkflowService;
 
   UserRole _currentRole = UserRole.student;
   UserProfile _currentUser = UserProfile.studentUser;
@@ -51,10 +54,25 @@ class AppState extends ChangeNotifier {
   bool _isActioningStep = false;
   String? _actionError;
 
+  // Admin Analytics & Oversight State
+  AdminStats? _adminStats;
+  bool _isLoadingAdminStats = false;
+  bool _hasLoadedAdminStats = false;
+  String? _adminStatsError;
+
+  List<JourneyRequest> _adminRequests = [];
+  bool _isLoadingAdminRequests = false;
+  bool _hasLoadedAdminRequests = false;
+  String? _adminRequestsError;
+  int _adminTotalRequests = 0;
+  int _adminTotalPages = 1;
+  int _adminCurrentPage = 1;
+
   AppState({
     AuthService? authService,
     StudentWorkflowService? studentWorkflowService,
     StaffWorkflowService? staffWorkflowService,
+    AdminWorkflowService? adminWorkflowService,
     bool? initialAuthenticated,
   })  : authService = authService ?? AuthService(),
         studentWorkflowService = studentWorkflowService ??
@@ -68,10 +86,18 @@ class AppState extends ChangeNotifier {
                     ? StaffWorkflowService(
                         apiClient: studentWorkflowService.apiClient)
                     : StaffWorkflowService())),
+        adminWorkflowService = adminWorkflowService ??
+            (authService != null
+                ? AdminWorkflowService(apiClient: authService.apiClient)
+                : (staffWorkflowService != null
+                    ? AdminWorkflowService(
+                        apiClient: staffWorkflowService.apiClient)
+                    : AdminWorkflowService())),
         _isAuthenticated = initialAuthenticated ??
             (studentWorkflowService != null ||
                 authService != null ||
-                staffWorkflowService != null) {
+                staffWorkflowService != null ||
+                adminWorkflowService != null) {
     _initSeedData();
   }
 
@@ -118,8 +144,27 @@ class AppState extends ChangeNotifier {
   bool get isActioningStep => _isActioningStep;
   String? get actionError => _actionError;
 
-  List<JourneyRequest> get adminQueue =>
-      _requests.where((r) => r.status == JourneyStatus.adminApproval).toList();
+  List<JourneyRequest> get adminQueue => _hasLoadedAdminRequests
+      ? _adminRequests
+          .where((r) => r.status == JourneyStatus.adminApproval)
+          .toList()
+      : _requests
+          .where((r) => r.status == JourneyStatus.adminApproval)
+          .toList();
+
+  AdminStats? get adminStats => _adminStats;
+  bool get isLoadingAdminStats => _isLoadingAdminStats;
+  bool get hasLoadedAdminStats => _hasLoadedAdminStats;
+  String? get adminStatsError => _adminStatsError;
+
+  List<JourneyRequest> get adminRequests =>
+      _hasLoadedAdminRequests ? List.unmodifiable(_adminRequests) : _requests;
+  bool get isLoadingAdminRequests => _isLoadingAdminRequests;
+  bool get hasLoadedAdminRequests => _hasLoadedAdminRequests;
+  String? get adminRequestsError => _adminRequestsError;
+  int get adminTotalRequests => _adminTotalRequests;
+  int get adminTotalPages => _adminTotalPages;
+  int get adminCurrentPage => _adminCurrentPage;
 
   void setRole(UserRole role) {
     _currentRole = role;
@@ -198,6 +243,15 @@ class AppState extends ChangeNotifier {
     _hasLoadedStaffQueue = false;
     _staffQueueError = null;
     _actionError = null;
+    _adminStats = null;
+    _hasLoadedAdminStats = false;
+    _adminStatsError = null;
+    _adminRequests = [];
+    _hasLoadedAdminRequests = false;
+    _adminRequestsError = null;
+    _adminTotalRequests = 0;
+    _adminTotalPages = 1;
+    _adminCurrentPage = 1;
     notifyListeners();
   }
 
@@ -292,10 +346,6 @@ class AppState extends ChangeNotifier {
   Future<JourneyRequest> submitStudentPayment(String id) async {
     _isProcessingPayment = true;
     _paymentError = null;
-    _staffQueue = [];
-    _hasLoadedStaffQueue = false;
-    _staffQueueError = null;
-    _actionError = null;
     notifyListeners();
 
     try {
@@ -460,7 +510,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Synchronizes an actioned request across _staffQueue, _studentRequests, and _requests.
+  /// Synchronizes an actioned request across _staffQueue, _studentRequests, _adminRequests, and _requests.
   void _syncActionedRequest(JourneyRequest updated) {
     // In staff queue, if step is no longer pending staff review or request is terminal, remove it
     _staffQueue.removeWhere((r) =>
@@ -483,6 +533,96 @@ class AppState extends ChangeNotifier {
         (r.backendId != null && r.backendId == updated.backendId));
     if (sIdx != -1) {
       _studentRequests[sIdx] = updated;
+    }
+
+    // Update in _adminRequests if present
+    final aIdx = _adminRequests.indexWhere((r) =>
+        r.id == updated.id ||
+        (r.backendId != null && r.backendId == updated.backendId));
+    if (aIdx != -1) {
+      _adminRequests[aIdx] = updated;
+    }
+  }
+
+  /// Fetches global system overview stats from GET /api/admin/stats.
+  Future<void> loadAdminStats({bool forceRefresh = false}) async {
+    if (_isLoadingAdminStats) return;
+    if (!forceRefresh && _hasLoadedAdminStats) return;
+
+    _isLoadingAdminStats = true;
+    _adminStatsError = null;
+    notifyListeners();
+
+    try {
+      final fetched = await adminWorkflowService.fetchAdminStats();
+      _adminStats = fetched;
+      _hasLoadedAdminStats = true;
+      _adminStatsError = null;
+    } on ApiException catch (e) {
+      _adminStatsError = e.message;
+    } catch (e) {
+      _adminStatsError =
+          'Failed to load system statistics. Please check connection.';
+    } finally {
+      _isLoadingAdminStats = false;
+      notifyListeners();
+    }
+  }
+
+  /// Fetches institutional requests from GET /api/admin/requests with optional filtering.
+  Future<void> loadAdminRequests({
+    String? status,
+    String? serviceId,
+    int page = 1,
+    int limit = 50,
+    bool forceRefresh = false,
+  }) async {
+    if (_isLoadingAdminRequests) return;
+    if (!forceRefresh &&
+        _hasLoadedAdminRequests &&
+        status == null &&
+        serviceId == null &&
+        page == _adminCurrentPage) {
+      return;
+    }
+
+    _isLoadingAdminRequests = true;
+    _adminRequestsError = null;
+    notifyListeners();
+
+    try {
+      final result = await adminWorkflowService.fetchAdminRequests(
+        status: status,
+        serviceId: serviceId,
+        page: page,
+        limit: limit,
+      );
+      _adminRequests = result.items;
+      _adminTotalRequests = result.total;
+      _adminTotalPages = result.pages;
+      _adminCurrentPage = result.page;
+      _hasLoadedAdminRequests = true;
+      _adminRequestsError = null;
+
+      // Sync into _requests as well
+      for (final item in result.items) {
+        final idx = _requests.indexWhere((r) =>
+            r.id == item.id ||
+            (r.backendId != null && r.backendId == item.backendId));
+        if (idx != -1) {
+          _requests[idx] = item;
+        } else {
+          _requests.insert(0, item);
+        }
+      }
+    } on ApiException catch (e) {
+      _adminRequestsError = e.message;
+    } catch (e) {
+      _adminRequestsError =
+          'Failed to load requests list. Please check connection.';
+    } finally {
+      _isLoadingAdminRequests = false;
+      notifyListeners();
     }
   }
 
