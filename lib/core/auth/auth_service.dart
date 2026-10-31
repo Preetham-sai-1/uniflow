@@ -49,11 +49,24 @@ class AuthService {
 
     final data = response.data as Map<String, dynamic>;
     final token = data['token'] as String;
-    final userJson = data['user'] as Map<String, dynamic>;
-    final user = UserProfile.fromJson(userJson);
-
     await tokenStorage.saveToken(token);
-    return AuthResult(token: token, user: user);
+
+    try {
+      UserProfile user;
+      try {
+        user = await getMe();
+      } catch (meError) {
+        if (meError is ApiException && meError.code == 'FORBIDDEN') {
+          rethrow;
+        }
+        final userJson = data['user'] as Map<String, dynamic>;
+        user = UserProfile.fromJson(userJson);
+      }
+      return AuthResult(token: token, user: user);
+    } catch (e) {
+      await tokenStorage.deleteToken();
+      rethrow;
+    }
   }
 
   /// Retrieve active user profile from GET /api/auth/me using stored Bearer token.
@@ -70,7 +83,7 @@ class AuthService {
 
   /// Restores session on application startup.
   /// If token exists, verifies with /api/auth/me.
-  /// If token is expired or unauthorized (401), removes token and returns null.
+  /// If token is expired, unauthorized, or invalid role (403), removes token and returns null.
   Future<UserProfile?> restoreSession() async {
     final token = await tokenStorage.getToken();
     if (token == null || token.isEmpty) {
@@ -82,11 +95,15 @@ class AuthService {
     } on ApiException catch (e) {
       if (e.isUnauthorized ||
           e.code == 'INVALID_TOKEN' ||
-          e.code == 'MISSING_TOKEN') {
+          e.code == 'MISSING_TOKEN' ||
+          e.code == 'FORBIDDEN') {
         await tokenStorage.deleteToken();
         return null;
       }
       rethrow;
+    } catch (_) {
+      await tokenStorage.deleteToken();
+      return null;
     }
   }
 

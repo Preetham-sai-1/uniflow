@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/state/app_state.dart';
-import '../../models/role.dart';
 import '../../widgets/responsive_container.dart';
 
 class ProfileView extends StatelessWidget {
@@ -127,89 +126,6 @@ class ProfileView extends StatelessWidget {
               ),
 
               const SizedBox(height: 24),
-
-              // Perspective Switcher Card (For evaluators / testing)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.borderSubtle),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.swap_horiz_rounded,
-                            color: AppColors.primaryBlue, size: 22),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Switch Active Role Perspective',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.primaryNavy,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Instantly test the campus journey from different user authorization levels.',
-                      style: TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: UserRole.values.map((role) {
-                        final isSelected = currentRole == role;
-                        return Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                backgroundColor: isSelected
-                                    ? const Color(0xFFEFF6FF)
-                                    : Colors.white,
-                                side: BorderSide(
-                                  color: isSelected
-                                      ? AppColors.primaryBlue
-                                      : AppColors.borderSubtle,
-                                  width: isSelected ? 1.5 : 1,
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 12, horizontal: 4),
-                              ),
-                              onPressed: () => appState.setRole(role),
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  role.shortName,
-                                  style: TextStyle(
-                                    color: isSelected
-                                        ? AppColors.primaryBlue
-                                        : AppColors.textSecondary,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w800
-                                        : FontWeight.w600,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                ),
-              ),
 
               const SizedBox(height: 24),
 

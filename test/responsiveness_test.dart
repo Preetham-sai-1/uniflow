@@ -62,7 +62,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Welcome Back'), findsOneWidget);
-      expect(find.text('CONTINUE AS'), findsOneWidget);
+      expect(find.text('CONTINUE AS'), findsNothing);
+      expect(find.text('Sign In'), findsOneWidget);
     });
 
     testWidgets('Student views render cleanly at 360px width',

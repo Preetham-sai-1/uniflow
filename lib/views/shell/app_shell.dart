@@ -53,7 +53,7 @@ class _AppShellState extends State<AppShell> {
               : AppBar(
                   title: const BrandLogo(fontSize: 17, iconSize: 22),
                   actions: [
-                    _buildRoleSwitchButton(role),
+                    _buildRoleBadge(role),
                     const SizedBox(width: 8),
                   ],
                 ),
@@ -95,7 +95,7 @@ class _AppShellState extends State<AppShell> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            _buildRoleSwitchButton(role, isExtended: isDesktop),
+                            _buildRoleBadge(role),
                             const SizedBox(height: 12),
                             IconButton(
                               tooltip: 'Sign Out',
@@ -184,7 +184,7 @@ class _AppShellState extends State<AppShell> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildRoleSwitchButton(role),
+              _buildRoleBadge(role),
               const SizedBox(width: 12),
               CircleAvatar(
                 radius: 16,
@@ -220,70 +220,28 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _buildRoleSwitchButton(UserRole currentRole,
-      {bool isExtended = false}) {
-    return PopupMenuButton<UserRole>(
-      tooltip: 'Switch Campus Perspective',
-      onSelected: (role) {
-        widget.appState.setRole(role);
-        setState(() => _currentIndex = 0);
-      },
-      itemBuilder: (context) {
-        return UserRole.values.map((role) {
-          final isSelected = currentRole == role;
-          return PopupMenuItem<UserRole>(
-            value: role,
-            child: Row(
-              children: [
-                Icon(
-                  role.icon,
-                  size: 18,
-                  color: isSelected
-                      ? AppColors.primaryBlue
-                      : AppColors.textSecondary,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  role.displayName,
-                  style: TextStyle(
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color: isSelected
-                        ? AppColors.primaryBlue
-                        : AppColors.primaryNavy,
-                  ),
-                ),
-              ],
+  Widget _buildRoleBadge(UserRole currentRole) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.primaryBlue.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(currentRole.icon, size: 14, color: AppColors.primaryBlue),
+          const SizedBox(width: 6),
+          Text(
+            currentRole.displayName,
+            style: const TextStyle(
+              color: AppColors.primaryBlue,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
             ),
-          );
-        }).toList();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFFEFF6FF),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.primaryBlue.withOpacity(0.3)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(currentRole.icon, size: 14, color: AppColors.primaryBlue),
-            const SizedBox(width: 6),
-            Text(
-              MediaQuery.of(context).size.width < 450
-                  ? currentRole.shortName
-                  : currentRole.displayName,
-              style: const TextStyle(
-                color: AppColors.primaryBlue,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(width: 4),
-            const Icon(Icons.arrow_drop_down_rounded,
-                size: 16, color: AppColors.primaryBlue),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

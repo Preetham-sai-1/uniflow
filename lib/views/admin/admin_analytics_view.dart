@@ -23,7 +23,11 @@ class _AdminAnalyticsViewState extends State<AdminAnalyticsView> {
   @override
   void initState() {
     super.initState();
-    _fetchStats();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _fetchStats();
+      }
+    });
   }
 
   void _fetchStats({bool forceRefresh = false}) {

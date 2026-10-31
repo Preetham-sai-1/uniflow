@@ -2,17 +2,20 @@ import 'package:flutter/material.dart';
 import '../../core/api/api_exceptions.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/state/app_state.dart';
-import '../../models/role.dart';
 import '../../widgets/brand_logo.dart';
 
 class LoginView extends StatefulWidget {
   final AppState appState;
   final VoidCallback onLoginSuccess;
+  final String? initialEmail;
+  final String? initialPassword;
 
   const LoginView({
     super.key,
     required this.appState,
     required this.onLoginSuccess,
+    this.initialEmail,
+    this.initialPassword,
   });
 
   @override
@@ -20,9 +23,8 @@ class LoginView extends StatefulWidget {
 }
 
 class _LoginViewState extends State<LoginView> {
-  UserRole _selectedRole = UserRole.student;
-  final _emailController = TextEditingController(text: 'student@uniflow.edu');
-  final _passwordController = TextEditingController(text: 'Demo@1234');
+  late final TextEditingController _emailController;
+  late final TextEditingController _passwordController;
   bool _obscurePassword = true;
   bool _isLoading = false;
   String? _errorMessage;
@@ -32,8 +34,9 @@ class _LoginViewState extends State<LoginView> {
   @override
   void initState() {
     super.initState();
-    _selectedRole = widget.appState.currentRole;
-    _updateDefaultCredentials(_selectedRole);
+    _emailController = TextEditingController(text: widget.initialEmail ?? '');
+    _passwordController =
+        TextEditingController(text: widget.initialPassword ?? '');
   }
 
   @override
@@ -41,29 +44,6 @@ class _LoginViewState extends State<LoginView> {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
-  }
-
-  void _updateDefaultCredentials(UserRole role) {
-    setState(() {
-      _selectedRole = role;
-      _errorMessage = null;
-      _emailError = null;
-      _passwordError = null;
-      switch (role) {
-        case UserRole.student:
-          _emailController.text = 'student@uniflow.edu';
-          _passwordController.text = 'Demo@1234';
-          break;
-        case UserRole.staff:
-          _emailController.text = 'staff@uniflow.edu';
-          _passwordController.text = 'Demo@1234';
-          break;
-        case UserRole.admin:
-          _emailController.text = 'admin@uniflow.edu';
-          _passwordController.text = 'Demo@1234';
-          break;
-      }
-    });
   }
 
   bool _validateInputs() {
@@ -244,8 +224,8 @@ class _LoginViewState extends State<LoginView> {
                           _HeroDivider(),
                           Expanded(
                             child: _HeroMetric(
-                              label: '3 ROLES',
-                              sub: 'Students, Staff & Admin',
+                              label: 'SECURE ACCESS',
+                              sub: 'Role-governed engine',
                             ),
                           ),
                         ],
@@ -283,7 +263,7 @@ class _LoginViewState extends State<LoginView> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Sign in with your institutional credentials to access student services, staff queues, and administrative tools.',
+                        'Sign in with your institutional credentials to access your campus workspace.',
                         style: TextStyle(
                           fontSize: 14,
                           color: AppColors.textSecondary,
@@ -292,79 +272,6 @@ class _LoginViewState extends State<LoginView> {
                       ),
 
                       const SizedBox(height: 28),
-
-                      // Demo Credential Quick-Fill Role Selector
-                      const Text(
-                        'CONTINUE AS',
-                        style: TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.1,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: UserRole.values.map((role) {
-                          final isSelected = _selectedRole == role;
-                          return Expanded(
-                            child: Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 4),
-                              child: InkWell(
-                                onTap: _isLoading
-                                    ? null
-                                    : () => _updateDefaultCredentials(role),
-                                borderRadius: BorderRadius.circular(12),
-                                child: Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 12),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? AppColors.primaryBlue
-                                        : Colors.white,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? AppColors.primaryBlue
-                                          : AppColors.borderSubtle,
-                                      width: isSelected ? 1.5 : 1,
-                                    ),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Icon(
-                                        role.icon,
-                                        size: 20,
-                                        color: isSelected
-                                            ? Colors.white
-                                            : AppColors.textSecondary,
-                                      ),
-                                      const SizedBox(height: 6),
-                                      FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        child: Text(
-                                          role.displayName,
-                                          maxLines: 1,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                            color: isSelected
-                                                ? Colors.white
-                                                : AppColors.primaryNavy,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-
-                      const SizedBox(height: 24),
 
                       // Error Banner
                       if (_errorMessage != null) ...[
@@ -476,44 +383,21 @@ class _LoginViewState extends State<LoginView> {
                                     strokeWidth: 2.5,
                                   ),
                                 )
-                              : FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                          'Enter as ${_selectedRole.displayName}'),
-                                      const SizedBox(width: 8),
-                                      const Icon(Icons.arrow_forward_rounded,
-                                          size: 18),
-                                    ],
-                                  ),
+                              : const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      'Sign In',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Icon(Icons.arrow_forward_rounded,
+                                        size: 18),
+                                  ],
                                 ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.info_outline,
-                                size: 16, color: AppColors.textSecondary),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Interactive Demo Mode: Select any role above to explore that perspective.',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ),
-                          ],
                         ),
                       ),
                     ],

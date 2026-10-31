@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/api/api_exceptions.dart';
 
 enum UserRole {
   student,
@@ -49,18 +50,34 @@ enum UserRole {
     }
   }
 
-  /// Maps string role from backend ('student', 'staff', 'admin') to [UserRole].
-  static UserRole fromString(String? role) {
+  /// Attempts to map string role from backend ('student', 'staff', 'admin') to [UserRole].
+  /// Returns null if the role is unrecognized or unsupported.
+  static UserRole? tryFromString(String? role) {
     switch (role?.toLowerCase().trim()) {
+      case 'student':
+        return UserRole.student;
       case 'staff':
         return UserRole.staff;
       case 'admin':
       case 'administrator':
         return UserRole.admin;
-      case 'student':
       default:
-        return UserRole.student;
+        return null;
     }
+  }
+
+  /// Maps string role from backend ('student', 'staff', 'admin') to [UserRole].
+  /// Throws [ApiException] with code FORBIDDEN (403) if role is unknown or unsupported.
+  static UserRole fromString(String? role) {
+    final parsed = tryFromString(role);
+    if (parsed == null) {
+      throw ApiException(
+        message: 'Access denied: unrecognized or unsupported user role ($role).',
+        statusCode: 403,
+        code: 'FORBIDDEN',
+      );
+    }
+    return parsed;
   }
 
   /// Converts [UserRole] to backend string format.

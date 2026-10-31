@@ -8,7 +8,7 @@ import 'package:uniflow_flutter_ui/models/service_item.dart';
 void main() {
   testWidgets('UniFlow smoke test - loads student dashboard',
       (WidgetTester tester) async {
-    await tester.pumpWidget(const UniFlowApp());
+    await tester.pumpWidget(const UniFlowApp(initialAuthenticated: true));
     await tester.pumpAndSettle();
 
     expect(find.text('Uni'), findsWidgets);

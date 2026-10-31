@@ -294,7 +294,8 @@ void main() {
       expect(UserRole.fromString('staff'), UserRole.staff);
       expect(UserRole.fromString('admin'), UserRole.admin);
       expect(UserRole.fromString('administrator'), UserRole.admin);
-      expect(UserRole.fromString('unknown_role'), UserRole.student);
+      expect(() => UserRole.fromString('unknown_role'),
+          throwsA(isA<ApiException>()));
 
       final jsonMap = {
         '_id': 'uid999',
@@ -387,6 +388,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.enterText(
+          find.byType(TextField).at(0), 'student@uniflow.edu');
+      await tester.enterText(
+          find.byType(TextField).at(1), 'WrongPassword123');
+      await tester.pumpAndSettle();
+
       // Tap Sign In
       await tester.ensureVisible(find.byType(ElevatedButton));
       await tester.tap(find.byType(ElevatedButton));
@@ -441,6 +448,12 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+          find.byType(TextField).at(0), 'student@uniflow.edu');
+      await tester.enterText(
+          find.byType(TextField).at(1), 'ValidPassword123');
       await tester.pumpAndSettle();
 
       await tester.ensureVisible(find.byType(ElevatedButton));

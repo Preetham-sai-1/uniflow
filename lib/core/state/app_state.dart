@@ -95,7 +95,6 @@ class AppState extends ChangeNotifier {
                     : AdminWorkflowService())),
         _isAuthenticated = initialAuthenticated ??
             (studentWorkflowService != null ||
-                authService != null ||
                 staffWorkflowService != null ||
                 adminWorkflowService != null) {
     _initSeedData();
