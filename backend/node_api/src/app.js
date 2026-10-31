@@ -29,13 +29,17 @@ const app = express();
 app.use(helmet());
 
 // ── 2. CORS — allowlist configured frontend & Flutter Web origins ─────────────
-const allowedOrigins = [
-  env.FRONTEND_URL,
+const devOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-  env.FLUTTER_WEB_URL,
   'http://localhost:7357',
   'http://127.0.0.1:7357',
+];
+
+const allowedOrigins = [
+  env.FRONTEND_URL,
+  env.FLUTTER_WEB_URL,
+  ...(env.NODE_ENV !== 'production' ? devOrigins : []),
 ].filter(Boolean);
 
 app.use(

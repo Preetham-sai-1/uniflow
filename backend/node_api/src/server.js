@@ -21,8 +21,8 @@ async function start() {
   // Connect to MongoDB before accepting traffic
   await connectDB();
 
-  const server = app.listen(env.PORT, () => {
-    console.log(`🚀  UniFlow API running on http://localhost:${env.PORT}`);
+  const server = app.listen(env.PORT, '0.0.0.0', () => {
+    console.log(`🚀  UniFlow API running on http://0.0.0.0:${env.PORT}`);
     console.log(`    Environment : ${env.NODE_ENV}`);
     console.log(`    CORS origin : ${env.FRONTEND_URL}`);
   });

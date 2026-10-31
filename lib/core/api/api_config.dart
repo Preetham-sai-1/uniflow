@@ -9,9 +9,16 @@ class ApiConfig {
   /// - Web: http://localhost:3001/api
   /// - Android Emulator: http://10.0.2.2:3001/api
   /// - Windows Desktop / iOS / other: http://localhost:3001/api
+  ///
+  /// In release mode, returns empty string if API_BASE_URL was not supplied,
+  /// preventing production builds from silently defaulting to local development addresses.
   static String get defaultBaseUrl {
     if (_envBaseUrl.isNotEmpty) {
       return _envBaseUrl;
+    }
+    // Production builds must never default to localhost, 127.0.0.1, 10.0.2.2, or LAN addresses
+    if (kReleaseMode) {
+      return '';
     }
     if (kIsWeb) {
       return 'http://localhost:3001/api';
@@ -22,6 +29,27 @@ class ApiConfig {
       default:
         return 'http://localhost:3001/api';
     }
+  }
+
+  /// Validates whether the active base URL satisfies production security standards.
+  /// When in release mode, enforces that the URL uses HTTPS and does not point
+  /// to loopback (localhost, 127.0.0.1, 10.0.2.2) or local LAN addresses.
+  static bool get isSecureProductionUrl {
+    if (!kReleaseMode) return true;
+    final url = baseUrl.toLowerCase().trim();
+    if (url.isEmpty || !url.startsWith('https://')) return false;
+    final uri = Uri.tryParse(url);
+    if (uri == null) return false;
+    final host = uri.host.toLowerCase();
+    if (host == 'localhost' ||
+        host == '127.0.0.1' ||
+        host == '10.0.2.2' ||
+        host.startsWith('192.168.') ||
+        host.startsWith('10.') ||
+        host.startsWith('172.16.')) {
+      return false;
+    }
+    return true;
   }
 
   /// Active API base URL. Can be dynamically overridden at runtime.

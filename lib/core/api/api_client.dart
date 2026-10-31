@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../auth/token_storage.dart';
 import 'api_config.dart';
@@ -25,6 +26,15 @@ class ApiClient {
   TokenStorage get tokenStorage => _tokenStorage;
 
   Uri _buildUri(String path, [Map<String, dynamic>? queryParameters]) {
+    if (kReleaseMode && baseUrl.isEmpty) {
+      throw const ApiException(
+        statusCode: 500,
+        code: 'CONFIG_ERROR',
+        message:
+            'Production configuration error: API_BASE_URL is not configured. '
+            'Please build with --dart-define=API_BASE_URL=https://...',
+      );
+    }
     final cleanBase = baseUrl.endsWith('/')
         ? baseUrl.substring(0, baseUrl.length - 1)
         : baseUrl;
