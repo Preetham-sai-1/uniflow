@@ -1,0 +1,554 @@
+import 'package:flutter/material.dart';
+import '../../models/journey_request.dart';
+import '../../models/role.dart';
+import '../../models/service_item.dart';
+
+class AppState extends ChangeNotifier {
+  UserRole _currentRole = UserRole.student;
+  UserProfile _currentUser = UserProfile.studentUser;
+  final List<JourneyRequest> _requests = [];
+
+  AppState() {
+    _initSeedData();
+  }
+
+  UserRole get currentRole => _currentRole;
+  UserProfile get currentUser => _currentUser;
+  List<JourneyRequest> get requests => List.unmodifiable(_requests);
+
+  // Filtered requests by current student or queue
+  List<JourneyRequest> get studentRequests => _requests
+      .where((r) => r.studentId == UserProfile.studentUser.id)
+      .toList();
+
+  List<JourneyRequest> get staffQueue => _requests
+      .where((r) =>
+          !r.status.isTerminal && r.status != JourneyStatus.adminApproval)
+      .toList();
+
+  List<JourneyRequest> get adminQueue =>
+      _requests.where((r) => r.status == JourneyStatus.adminApproval).toList();
+
+  void setRole(UserRole role) {
+    _currentRole = role;
+    switch (role) {
+      case UserRole.student:
+        _currentUser = UserProfile.studentUser;
+        break;
+      case UserRole.staff:
+        _currentUser = UserProfile.staffUser;
+        break;
+      case UserRole.admin:
+        _currentUser = UserProfile.adminUser;
+        break;
+    }
+    notifyListeners();
+  }
+
+  void _initSeedData() {
+    final now = DateTime.now();
+
+    _requests.addAll([
+      JourneyRequest(
+        id: 'UF-2026-0018',
+        serviceType: ServiceType.bonafide,
+        studentId: UserProfile.studentUser.id,
+        studentName: UserProfile.studentUser.name,
+        studentRoll: UserProfile.studentUser.identifier,
+        department: UserProfile.studentUser.department,
+        status: JourneyStatus.departmentReview,
+        submittedAt: now.subtract(const Duration(hours: 6)),
+        updatedAt: now.subtract(const Duration(hours: 5)),
+        formData: {
+          'Purpose': 'Higher Education Application (Master\'s Enrolment)',
+          'Number of Copies': '2',
+          'Urgent Processing': 'Yes (Deadline within 3 days)',
+          'Academic Semester': '6th Semester - Spring 2026',
+        },
+        timeline: [
+          TimelineStep(
+            title: 'Request Submitted',
+            description:
+                'Application successfully uploaded and dispatched to Department Office.',
+            actorRole: 'Student',
+            actorName: UserProfile.studentUser.name,
+            timestamp: now.subtract(const Duration(hours: 6)),
+            isCompleted: true,
+          ),
+          TimelineStep(
+            title: 'Department Verification',
+            description:
+                'Enrolment records and student clearance being verified by Academic Staff.',
+            actorRole: 'Department Staff',
+            actorName: 'Dr. Sarah Jenkins',
+            timestamp: now.subtract(const Duration(hours: 5)),
+            isCurrent: true,
+          ),
+          TimelineStep(
+            title: 'Administrative Approval',
+            description:
+                'Dean / Registrar seal and institutional digital signature.',
+            actorRole: 'Administrator',
+            timestamp: now.subtract(const Duration(hours: 4)),
+          ),
+          TimelineStep(
+            title: 'Issuance & Download',
+            description:
+                'Digitally authenticated certificate ready for collection/download.',
+            actorRole: 'System',
+            timestamp: now.subtract(const Duration(hours: 3)),
+          ),
+        ],
+      ),
+      JourneyRequest(
+        id: 'UF-2026-0014',
+        serviceType: ServiceType.idCard,
+        studentId: UserProfile.studentUser.id,
+        studentName: UserProfile.studentUser.name,
+        studentRoll: UserProfile.studentUser.identifier,
+        department: UserProfile.studentUser.department,
+        status: JourneyStatus.paymentRequired,
+        feeAmount: 200.0,
+        isFeePaid: false,
+        submittedAt: now.subtract(const Duration(days: 1, hours: 2)),
+        updatedAt: now.subtract(const Duration(hours: 12)),
+        formData: {
+          'Reason': 'Lost on campus shuttle bus',
+          'Police Reference / FIR': 'N/A (Campus Incident Log #9912)',
+          'Contact Phone': '+1 (555) 382-9102',
+          'Delivery Mode': 'Campus Security Gate 2 Counter',
+        },
+        timeline: [
+          TimelineStep(
+            title: 'Incident Report Filed',
+            description: 'ID card replacement request registered in system.',
+            actorRole: 'Student',
+            actorName: UserProfile.studentUser.name,
+            timestamp: now.subtract(const Duration(days: 1, hours: 2)),
+            isCompleted: true,
+          ),
+          TimelineStep(
+            title: 'Security Clearance Verified',
+            description:
+                'Security desk reviewed incident details and approved card re-issue.',
+            actorRole: 'Security Desk Staff',
+            actorName: 'Officer Miller',
+            timestamp: now.subtract(const Duration(hours: 12)),
+            isCompleted: true,
+            comment:
+                'Student identity confirmed from database photo; previous badge deactivated.',
+          ),
+          TimelineStep(
+            title: 'Replacement Fee Payment',
+            description:
+                'Standard smart-card re-printing fee (₹200) pending payment.',
+            actorRole: 'Student',
+            timestamp: now.subtract(const Duration(hours: 10)),
+            isCurrent: true,
+          ),
+          TimelineStep(
+            title: 'Admin Printing Order',
+            description:
+                'Final issuance confirmation and card production queued.',
+            actorRole: 'Administrator',
+            timestamp: now.subtract(const Duration(hours: 8)),
+          ),
+        ],
+      ),
+      JourneyRequest(
+        id: 'UF-2026-0009',
+        serviceType: ServiceType.equipment,
+        studentId: UserProfile.studentUser.id,
+        studentName: UserProfile.studentUser.name,
+        studentRoll: UserProfile.studentUser.identifier,
+        department: UserProfile.studentUser.department,
+        status: JourneyStatus.approved,
+        submittedAt: now.subtract(const Duration(days: 3)),
+        updatedAt: now.subtract(const Duration(days: 2)),
+        formData: {
+          'Equipment Category': 'Audio/Visual Projector (4K HD)',
+          'Item Asset Tag': 'AV-PROJ-8841',
+          'Booking Start': '2026-11-02 10:00 AM',
+          'Return By': '2026-11-02 04:30 PM',
+          'Supervisor Faculty': 'Prof. A. Henderson',
+          'Usage Context': 'Final Year Capstone Design Presentation in Hall B',
+        },
+        timeline: [
+          TimelineStep(
+            title: 'Booking Request Submitted',
+            description: 'Reservation scheduled for Audio/Visual Equipment.',
+            actorRole: 'Student',
+            actorName: UserProfile.studentUser.name,
+            timestamp: now.subtract(const Duration(days: 3)),
+            isCompleted: true,
+          ),
+          TimelineStep(
+            title: 'Custodian Approval',
+            description:
+                'Equipment availability confirmed; reserved under student roll.',
+            actorRole: 'Equipment Custodian',
+            actorName: 'Dr. Sarah Jenkins',
+            timestamp: now.subtract(const Duration(days: 2)),
+            isCompleted: true,
+            comment:
+                'Asset inspected and packaged with power cable and HDMI adapter.',
+          ),
+          TimelineStep(
+            title: 'Confirmed & Ready for Pick-up',
+            description:
+                'Bring campus ID card to Tech Hub Counter at scheduled time.',
+            actorRole: 'System',
+            timestamp: now.subtract(const Duration(days: 2)),
+            isCompleted: true,
+          ),
+        ],
+      ),
+      JourneyRequest(
+        id: 'UF-2026-0004',
+        serviceType: ServiceType.bonafide,
+        studentId: 'u-std-999',
+        studentName: 'Marcus Cole',
+        studentRoll: 'MECH-2022-019',
+        department: 'Mechanical Engineering',
+        status: JourneyStatus.rejected,
+        submittedAt: now.subtract(const Duration(days: 5)),
+        updatedAt: now.subtract(const Duration(days: 4)),
+        rejectionReason:
+            'Fee dues pending in Finance office. Clear semester fee before requesting certificate.',
+        formData: {
+          'Purpose': 'Personal Bank Account Verification',
+          'Number of Copies': '1',
+          'Academic Semester': '8th Semester',
+        },
+        timeline: [
+          TimelineStep(
+            title: 'Request Submitted',
+            description: 'Application entered into workflow queue.',
+            actorRole: 'Student',
+            actorName: 'Marcus Cole',
+            timestamp: now.subtract(const Duration(days: 5)),
+            isCompleted: true,
+          ),
+          TimelineStep(
+            title: 'Department Verification',
+            description:
+                'Rejected by Department Secretary due to unresolved fee clearance.',
+            actorRole: 'Department Staff',
+            actorName: 'Dr. Sarah Jenkins',
+            timestamp: now.subtract(const Duration(days: 4)),
+            isCompleted: false,
+            isRejected: true,
+            comment:
+                'Clear outstanding balance with Bursar before requesting official endorsement.',
+          ),
+        ],
+      ),
+    ]);
+  }
+
+  void submitRequest({
+    required ServiceType serviceType,
+    required Map<String, String> formData,
+  }) {
+    final now = DateTime.now();
+    final newId = 'UF-2026-00${_requests.length + 21}';
+
+    JourneyStatus initialStatus;
+    List<TimelineStep> timeline = [];
+    double fee = 0.0;
+
+    switch (serviceType) {
+      case ServiceType.bonafide:
+        initialStatus = JourneyStatus.departmentReview;
+        timeline = [
+          TimelineStep(
+            title: 'Request Submitted',
+            description: 'Certificate petition logged with campus office.',
+            actorRole: 'Student',
+            actorName: _currentUser.name,
+            timestamp: now,
+            isCompleted: true,
+          ),
+          TimelineStep(
+            title: 'Department Verification',
+            description: 'Staff checking academic records and eligibility.',
+            actorRole: 'Department Staff',
+            timestamp: now,
+            isCurrent: true,
+          ),
+          TimelineStep(
+            title: 'Administrative Approval',
+            description: 'Dean / Registrar digital seal and sign-off.',
+            actorRole: 'Administrator',
+            timestamp: now,
+          ),
+          TimelineStep(
+            title: 'Issuance & Ready',
+            description: 'Digitally verified document ready.',
+            actorRole: 'System',
+            timestamp: now,
+          ),
+        ];
+        break;
+
+      case ServiceType.idCard:
+        initialStatus = JourneyStatus.securityReview;
+        fee = 200.0;
+        timeline = [
+          TimelineStep(
+            title: 'Report Submitted',
+            description: 'Replacement ticket created for smart badge.',
+            actorRole: 'Student',
+            actorName: _currentUser.name,
+            timestamp: now,
+            isCompleted: true,
+          ),
+          TimelineStep(
+            title: 'Security Verification',
+            description:
+                'Security office checking badge deactivation and records.',
+            actorRole: 'Security Desk',
+            timestamp: now,
+            isCurrent: true,
+          ),
+          TimelineStep(
+            title: 'Processing Fee Payment',
+            description: 'Campus smart-card reprinting fee (₹200).',
+            actorRole: 'Student',
+            timestamp: now,
+          ),
+          TimelineStep(
+            title: 'Card Production & Dispatch',
+            description: 'Printing at Registrar card facility.',
+            actorRole: 'Administrator',
+            timestamp: now,
+          ),
+        ];
+        break;
+
+      case ServiceType.equipment:
+        initialStatus = JourneyStatus.departmentReview;
+        timeline = [
+          TimelineStep(
+            title: 'Booking Request Submitted',
+            description: 'Asset reservation requested for review.',
+            actorRole: 'Student',
+            actorName: _currentUser.name,
+            timestamp: now,
+            isCompleted: true,
+          ),
+          TimelineStep(
+            title: 'Equipment Custodian Review',
+            description:
+                'Custodian verifying inventory availability and condition.',
+            actorRole: 'Equipment Custodian',
+            timestamp: now,
+            isCurrent: true,
+          ),
+          TimelineStep(
+            title: 'Confirmed & Scheduled',
+            description:
+                'Equipment reserved and locked for the designated slot.',
+            actorRole: 'System',
+            timestamp: now,
+          ),
+        ];
+        break;
+    }
+
+    final newRequest = JourneyRequest(
+      id: newId,
+      serviceType: serviceType,
+      studentId: _currentUser.id,
+      studentName: _currentUser.name,
+      studentRoll: _currentUser.identifier,
+      department: _currentUser.department,
+      status: initialStatus,
+      submittedAt: now,
+      updatedAt: now,
+      formData: formData,
+      timeline: timeline,
+      feeAmount: fee,
+      isFeePaid: false,
+    );
+
+    _requests.insert(0, newRequest);
+    notifyListeners();
+  }
+
+  void staffReviewRequest({
+    required String requestId,
+    required bool approve,
+    required String comment,
+  }) {
+    final index = _requests.indexWhere((r) => r.id == requestId);
+    if (index == -1) return;
+
+    final req = _requests[index];
+    final now = DateTime.now();
+
+    if (!approve) {
+      // Rejection branch
+      final updatedTimeline = req.timeline.map((step) {
+        if (step.isCurrent) {
+          return step.copyWith(
+            isCurrent: false,
+            isRejected: true,
+            comment: comment,
+            timestamp: now,
+          );
+        }
+        return step;
+      }).toList();
+
+      _requests[index] = req.copyWith(
+        status: JourneyStatus.rejected,
+        updatedAt: now,
+        staffComment: comment,
+        rejectionReason: comment,
+        timeline: updatedTimeline,
+      );
+    } else {
+      // Approval branch
+      JourneyStatus nextStatus;
+      if (req.serviceType == ServiceType.bonafide) {
+        nextStatus = JourneyStatus.adminApproval;
+      } else if (req.serviceType == ServiceType.idCard) {
+        nextStatus = JourneyStatus.paymentRequired;
+      } else {
+        // Equipment booking is approved by custodian directly
+        nextStatus = JourneyStatus.approved;
+      }
+
+      int currentStepIndex = req.timeline.indexWhere((s) => s.isCurrent);
+      final updatedTimeline = List<TimelineStep>.from(req.timeline);
+
+      if (currentStepIndex != -1) {
+        updatedTimeline[currentStepIndex] =
+            updatedTimeline[currentStepIndex].copyWith(
+          isCompleted: true,
+          isCurrent: false,
+          comment:
+              comment.isNotEmpty ? comment : 'Approved by department staff',
+          actorName: _currentUser.name,
+          timestamp: now,
+        );
+
+        if (currentStepIndex + 1 < updatedTimeline.length) {
+          if (nextStatus != JourneyStatus.approved) {
+            updatedTimeline[currentStepIndex + 1] =
+                updatedTimeline[currentStepIndex + 1].copyWith(isCurrent: true);
+          } else {
+            // All subsequent steps completed
+            for (int i = currentStepIndex + 1;
+                i < updatedTimeline.length;
+                i++) {
+              updatedTimeline[i] = updatedTimeline[i].copyWith(
+                isCompleted: true,
+                isCurrent: false,
+                timestamp: now,
+              );
+            }
+          }
+        }
+      }
+
+      _requests[index] = req.copyWith(
+        status: nextStatus,
+        updatedAt: now,
+        staffComment: comment,
+        timeline: updatedTimeline,
+      );
+    }
+
+    notifyListeners();
+  }
+
+  void studentPayFee(String requestId) {
+    final index = _requests.indexWhere((r) => r.id == requestId);
+    if (index == -1) return;
+
+    final req = _requests[index];
+    final now = DateTime.now();
+
+    int currentStepIndex = req.timeline.indexWhere((s) => s.isCurrent);
+    final updatedTimeline = List<TimelineStep>.from(req.timeline);
+
+    if (currentStepIndex != -1) {
+      updatedTimeline[currentStepIndex] =
+          updatedTimeline[currentStepIndex].copyWith(
+        isCompleted: true,
+        isCurrent: false,
+        comment:
+            'Online payment received (₹${req.feeAmount.toStringAsFixed(0)})',
+        timestamp: now,
+      );
+      if (currentStepIndex + 1 < updatedTimeline.length) {
+        updatedTimeline[currentStepIndex + 1] =
+            updatedTimeline[currentStepIndex + 1].copyWith(isCurrent: true);
+      }
+    }
+
+    _requests[index] = req.copyWith(
+      status: JourneyStatus.adminApproval,
+      isFeePaid: true,
+      updatedAt: now,
+      timeline: updatedTimeline,
+    );
+
+    notifyListeners();
+  }
+
+  void adminReviewRequest({
+    required String requestId,
+    required bool approve,
+    required String comment,
+  }) {
+    final index = _requests.indexWhere((r) => r.id == requestId);
+    if (index == -1) return;
+
+    final req = _requests[index];
+    final now = DateTime.now();
+
+    if (!approve) {
+      final updatedTimeline = req.timeline.map((step) {
+        if (step.isCurrent) {
+          return step.copyWith(
+            isCurrent: false,
+            isRejected: true,
+            comment: comment,
+            timestamp: now,
+          );
+        }
+        return step;
+      }).toList();
+
+      _requests[index] = req.copyWith(
+        status: JourneyStatus.rejected,
+        updatedAt: now,
+        adminComment: comment,
+        rejectionReason: comment,
+        timeline: updatedTimeline,
+      );
+    } else {
+      final updatedTimeline = req.timeline.map((step) {
+        return step.copyWith(
+          isCompleted: true,
+          isCurrent: false,
+          comment: step.isCurrent
+              ? (comment.isNotEmpty ? comment : 'Approved by Executive Admin')
+              : step.comment,
+        );
+      }).toList();
+
+      _requests[index] = req.copyWith(
+        status: JourneyStatus.approved,
+        updatedAt: now,
+        adminComment: comment,
+        timeline: updatedTimeline,
+      );
+    }
+
+    notifyListeners();
+  }
+}

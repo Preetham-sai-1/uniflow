@@ -1,0 +1,33 @@
+{
+  "name": "uniflow-api",
+  "version": "1.0.0",
+  "description": "UniFlow — Campus Journey Engine: Node.js/Express REST API",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node scripts/seed.js",
+    "test": "node --env-file=tests/.env.test --test --test-reporter=spec tests/app.test.js tests/health.test.js tests/models.test.js tests/auth.test.js tests/workflow.test.js",
+    "test:verbose": "node --env-file=tests/.env.test --test --test-reporter=tap tests/app.test.js tests/health.test.js tests/models.test.js tests/auth.test.js tests/workflow.test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.5.0",
+    "morgan": "^1.10.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["uniflow", "campus", "workflow", "express", "mongodb"],
+  "license": "UNLICENSED"
+}
