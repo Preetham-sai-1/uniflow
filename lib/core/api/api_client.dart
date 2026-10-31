@@ -22,6 +22,7 @@ class ApiClient {
         _customBaseUrl = baseUrl;
 
   String get baseUrl => _customBaseUrl ?? ApiConfig.baseUrl;
+  TokenStorage get tokenStorage => _tokenStorage;
 
   Uri _buildUri(String path, [Map<String, dynamic>? queryParameters]) {
     final cleanBase = baseUrl.endsWith('/')

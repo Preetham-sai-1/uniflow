@@ -342,7 +342,9 @@ class JourneyRequest {
       final stepRole = (s['assignedRole'] as String? ?? 'Staff').toUpperCase();
       final stepStatus = (s['status'] as String? ?? 'PENDING').toUpperCase();
       final isPaymentStep = s['isPaymentStep'] == true;
-      final actorData = s['actor'] as Map<String, dynamic>?;
+      final actorData = (s['actor'] is Map<String, dynamic>)
+          ? s['actor'] as Map<String, dynamic>
+          : null;
       final actorName = actorData?['name'] as String?;
       final comment = s['comment'] as String?;
       final actionedAtStr = s['actionedAt'] as String?;

@@ -26,9 +26,12 @@ class AuthService {
   AuthService({
     ApiClient? apiClient,
     TokenStorage? tokenStorage,
-  })  : tokenStorage = tokenStorage ?? SecureTokenStorage(),
+  })  : tokenStorage =
+            tokenStorage ?? apiClient?.tokenStorage ?? SecureTokenStorage(),
         apiClient = apiClient ??
-            ApiClient(tokenStorage: tokenStorage ?? SecureTokenStorage());
+            ApiClient(
+                tokenStorage: tokenStorage ??
+                    (apiClient != null ? apiClient.tokenStorage : SecureTokenStorage()));
 
   /// Authenticate with the real backend login endpoint.
   Future<AuthResult> login({

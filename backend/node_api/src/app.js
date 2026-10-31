@@ -42,7 +42,12 @@ app.use(
   cors({
     origin: (origin, callback) => {
       // Allow non-browser requests (no origin header, e.g. mobile apps, curl)
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        (env.NODE_ENV === 'development' &&
+          /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))
+      ) {
         return callback(null, true);
       }
       return callback(null, false);
