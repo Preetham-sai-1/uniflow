@@ -87,6 +87,34 @@ enum JourneyStatus {
 
   bool get isTerminal =>
       this == JourneyStatus.approved || this == JourneyStatus.rejected;
+
+  static JourneyStatus fromBackendString(String? status) {
+    if (status == null) return JourneyStatus.submitted;
+    switch (status.toUpperCase()) {
+      case 'SUBMITTED':
+        return JourneyStatus.submitted;
+      case 'DEPARTMENT_VERIFICATION_PENDING':
+      case 'DEPT_REVIEW':
+        return JourneyStatus.departmentReview;
+      case 'SECURITY_REVIEW_PENDING':
+      case 'STAFF_REVIEW_PENDING':
+        return JourneyStatus.securityReview;
+      case 'FEE_PAYMENT_PENDING':
+      case 'PAYMENT_REQUIRED':
+        return JourneyStatus.paymentRequired;
+      case 'ADMIN_APPROVAL_PENDING':
+      case 'ADMIN_REVIEW':
+        return JourneyStatus.adminApproval;
+      case 'COMPLETED':
+      case 'BOOKING_CONFIRMED':
+      case 'APPROVED':
+        return JourneyStatus.approved;
+      case 'REJECTED':
+        return JourneyStatus.rejected;
+      default:
+        return JourneyStatus.submitted;
+    }
+  }
 }
 
 class TimelineStep {
@@ -209,6 +237,74 @@ class JourneyRequest {
       staffComment: staffComment ?? this.staffComment,
       adminComment: adminComment ?? this.adminComment,
       rejectionReason: rejectionReason ?? this.rejectionReason,
+    );
+  }
+
+  factory JourneyRequest.fromJson(Map<String, dynamic> json) {
+    final serviceData = json['service'] as Map<String, dynamic>?;
+    final slug =
+        serviceData?['slug'] as String? ?? json['serviceSlug'] as String? ?? '';
+    final serviceType = ServiceType.fromSlug(slug);
+
+    final studentData = json['student'] as Map<String, dynamic>?;
+    final studentId = studentData?['_id'] as String? ??
+        studentData?['id'] as String? ??
+        json['studentId'] as String? ??
+        '';
+    final studentName = studentData?['name'] as String? ?? 'Student';
+    final studentRoll = studentData?['studentId'] as String? ?? '';
+    final dept = studentData?['department'] as String? ?? 'General';
+
+    final statusStr = json['status'] as String? ?? 'SUBMITTED';
+    final status = JourneyStatus.fromBackendString(statusStr);
+
+    final rawFormData = json['formData'] as Map<String, dynamic>? ?? {};
+    final formData =
+        rawFormData.map((k, v) => MapEntry(k, v?.toString() ?? ''));
+
+    final rawSteps = (json['runtimeSteps'] as List<dynamic>?) ?? [];
+    final timeline = rawSteps.map<TimelineStep>((step) {
+      final s = step as Map<String, dynamic>;
+      final stepStatus = s['status'] as String? ?? 'PENDING';
+      final isCompleted = stepStatus == 'APPROVED' ||
+          stepStatus == 'PAID' ||
+          stepStatus == 'COMPLETED';
+      final isCurrent = stepStatus == 'PENDING';
+      final isRejected = stepStatus == 'REJECTED';
+      final actorData = s['actor'] as Map<String, dynamic>?;
+      return TimelineStep(
+        title: s['name'] as String? ?? 'Workflow Step',
+        description: 'Status: $stepStatus',
+        actorRole: s['assignedRole'] as String? ?? 'Staff',
+        actorName: actorData?['name'] as String?,
+        timestamp: s['actionedAt'] != null
+            ? DateTime.tryParse(s['actionedAt'].toString()) ?? DateTime.now()
+            : DateTime.now(),
+        isCompleted: isCompleted,
+        isCurrent: isCurrent,
+        isRejected: isRejected,
+        comment: s['comment'] as String?,
+      );
+    }).toList();
+
+    return JourneyRequest(
+      id: json['requestNumber'] as String? ?? json['_id'] as String? ?? '',
+      serviceType: serviceType,
+      studentId: studentId,
+      studentName: studentName,
+      studentRoll: studentRoll,
+      department: dept,
+      status: status,
+      submittedAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.tryParse(json['updatedAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      formData: formData,
+      timeline: timeline,
+      feeAmount: slug == 'id-card-replacement' ? 200.0 : 0.0,
+      isFeePaid: false,
     );
   }
 }

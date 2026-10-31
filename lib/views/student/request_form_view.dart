@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
+import '../../core/api/api_exceptions.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/services/student_workflow_service.dart';
 import '../../core/state/app_state.dart';
 import '../../models/service_item.dart';
 import '../../widgets/responsive_container.dart';
-import 'request_detail_view.dart';
 
 class RequestFormView extends StatefulWidget {
   final ServiceType serviceType;
+  final CampusServiceItem? service;
   final AppState appState;
 
   const RequestFormView({
     super.key,
     required this.serviceType,
+    this.service,
     required this.appState,
   });
 
@@ -21,6 +24,8 @@ class RequestFormView extends StatefulWidget {
 
 class _RequestFormViewState extends State<RequestFormView> {
   final _formKey = GlobalKey<FormState>();
+  bool _isSubmitting = false;
+  String? _errorMessage;
 
   // Bonafide fields
   String _bonafidePurpose = 'Educational Loan Application';
@@ -53,73 +58,177 @@ class _RequestFormViewState extends State<RequestFormView> {
     super.dispose();
   }
 
-  void _submitForm() {
+  String _defaultSlugForType(ServiceType type) {
+    switch (type) {
+      case ServiceType.bonafide:
+        return 'bonafide-certificate';
+      case ServiceType.idCard:
+        return 'id-card-replacement';
+      case ServiceType.equipment:
+        return 'equipment-booking';
+    }
+  }
+
+  Future<void> _submitForm() async {
+    if (_isSubmitting) return;
+
+    setState(() {
+      _errorMessage = null;
+    });
+
     if (!_formKey.currentState!.validate()) return;
 
-    final Map<String, String> formData = {};
+    final Map<String, dynamic> formData = {};
 
     switch (widget.serviceType) {
       case ServiceType.bonafide:
-        formData['Purpose'] = _bonafidePurpose;
-        formData['Academic Semester'] = _academicSemester;
-        formData['Number of Copies'] = _copies.toString();
-        formData['Urgent Processing'] =
+        formData['purpose'] = _bonafidePurpose;
+        formData['copies'] = _copies;
+        formData['academicSemester'] = _academicSemester;
+        formData['urgentProcessing'] =
             _urgent ? 'Yes (Within 48h)' : 'Standard (3-5 Days)';
         if (_remarksController.text.trim().isNotEmpty) {
-          formData['Additional Remarks'] = _remarksController.text.trim();
+          formData['additionalDetails'] = _remarksController.text.trim();
         }
         break;
 
       case ServiceType.idCard:
-        formData['Reason for Replacement'] = _idReason;
-        if (_firController.text.trim().isNotEmpty) {
-          formData['Police Complaint / FIR'] = _firController.text.trim();
+        String reason = 'Lost';
+        final lower = _idReason.toLowerCase();
+        if (lower.contains('stolen') || lower.contains('robbed')) {
+          reason = 'Stolen';
+        } else if (lower.contains('broken') ||
+            lower.contains('chipped') ||
+            lower.contains('error')) {
+          reason = 'Damaged';
         }
-        formData['Contact Phone'] = _phoneController.text.trim();
-        formData['Collection Point'] = _pickupLocation;
-        formData['Estimated Fee'] = '₹200';
+
+        if (reason == 'Stolen' && _firController.text.trim().isEmpty) {
+          setState(() {
+            _errorMessage =
+                'Police Complaint / FIR reference is required when reporting a stolen card.';
+          });
+          return;
+        }
+
+        formData['reason'] = reason;
+        formData['contactNumber'] = _phoneController.text.trim();
+        formData['pickupLocation'] = _pickupLocation;
+        formData['originalReason'] = _idReason;
+        if (_firController.text.trim().isNotEmpty) {
+          formData['policeComplaintRef'] = _firController.text.trim();
+        }
         break;
 
       case ServiceType.equipment:
-        formData['Equipment Category'] = _equipmentCategory;
-        formData['Booking Date'] =
-            '${_bookingDate.year}-${_bookingDate.month.toString().padLeft(2, '0')}-${_bookingDate.day.toString().padLeft(2, '0')}';
-        formData['Time Slot'] = _timeSlot;
-        formData['Faculty Supervisor'] = _supervisorController.text.trim();
-        formData['Purpose of Use'] = _purposeController.text.trim();
+        int startHour = 9;
+        int endHour = 13;
+        if (_timeSlot.contains('Afternoon')) {
+          startHour = 14;
+          endHour = 18;
+        } else if (_timeSlot.contains('Full Day')) {
+          startHour = 9;
+          endHour = 17;
+        }
+
+        final startDateTime = DateTime(
+          _bookingDate.year,
+          _bookingDate.month,
+          _bookingDate.day,
+          startHour,
+          0,
+        );
+        final endDateTime = DateTime(
+          _bookingDate.year,
+          _bookingDate.month,
+          _bookingDate.day,
+          endHour,
+          0,
+        );
+
+        formData['equipmentName'] = _equipmentCategory;
+        formData['purpose'] = _purposeController.text.trim();
+        formData['startTime'] = startDateTime.toIso8601String();
+        formData['endTime'] = endDateTime.toIso8601String();
+        formData['timeSlot'] = _timeSlot;
+        formData['supervisor'] = _supervisorController.text.trim();
         break;
     }
 
-    widget.appState.submitRequest(
-      serviceType: widget.serviceType,
-      formData: formData,
-    );
+    final serviceIdentifier = widget.service?.id ??
+        widget.service?.slug ??
+        _defaultSlugForType(widget.serviceType);
 
-    final newRequest = widget.appState.requests.first;
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => RequestDetailView(
-          requestId: newRequest.id,
-          appState: widget.appState,
+    try {
+      final result = await widget.appState.submitStudentRequest(
+        serviceId: serviceIdentifier,
+        formData: formData,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _isSubmitting = false;
+      });
+
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogCtx) => _SuccessConfirmationDialog(
+          result: result,
+          serviceTitle: widget.service?.title ?? widget.serviceType.title,
+          onClose: () {
+            Navigator.of(dialogCtx).pop();
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+          },
         ),
-      ),
-    );
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: AppColors.statusApproved,
-        content: Text('Request ${newRequest.id} created successfully!'),
-      ),
-    );
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.message;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.statusRejected,
+          content: Text(e.message),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Submission failed: ${e.toString()}';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.statusRejected,
+          content: Text(_errorMessage!),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final title = widget.service?.title ?? widget.serviceType.title;
+    final sla = widget.service?.sla ?? widget.serviceType.standardSla;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('New ${widget.serviceType.title} Request'),
+        title: Text('New $title Request'),
       ),
       body: ResponsiveContainer(
         maxWidth: 720,
@@ -147,7 +256,7 @@ class _RequestFormViewState extends State<RequestFormView> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
-                        widget.serviceType.icon,
+                        widget.service?.icon ?? widget.serviceType.icon,
                         color: AppColors.primaryBlue,
                         size: 24,
                       ),
@@ -158,7 +267,7 @@ class _RequestFormViewState extends State<RequestFormView> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            widget.serviceType.title,
+                            title,
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w800,
@@ -167,7 +276,7 @@ class _RequestFormViewState extends State<RequestFormView> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Standard SLA: ${widget.serviceType.standardSla} • Verified by Institutional Staff',
+                            'Standard SLA: $sla • Verified by Institutional Staff',
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.textSecondary,
@@ -210,6 +319,37 @@ class _RequestFormViewState extends State<RequestFormView> {
                     ),
                     const Divider(height: 28),
 
+                    if (_errorMessage != null) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.statusRejectedBg,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                              color: AppColors.statusRejected.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded,
+                                color: AppColors.statusRejected, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                _errorMessage!,
+                                style: const TextStyle(
+                                  color: AppColors.statusRejected,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+
                     if (widget.serviceType == ServiceType.bonafide)
                       _buildBonafideFields()
                     else if (widget.serviceType == ServiceType.idCard)
@@ -224,9 +364,21 @@ class _RequestFormViewState extends State<RequestFormView> {
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton.icon(
-                        icon: const Icon(Icons.send_rounded, size: 18),
-                        label: const Text('Submit Request to Campus Office'),
-                        onPressed: _submitForm,
+                        icon: _isSubmitting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                              )
+                            : const Icon(Icons.send_rounded, size: 18),
+                        label: Text(_isSubmitting
+                            ? 'Submitting Request...'
+                            : 'Submit Request to Campus Office'),
+                        onPressed: _isSubmitting ? null : _submitForm,
                       ),
                     ),
                   ],
@@ -553,6 +705,170 @@ class _RequestFormViewState extends State<RequestFormView> {
           validator: (v) => v == null || v.trim().isEmpty
               ? 'Please describe intended use'
               : null,
+        ),
+      ],
+    );
+  }
+}
+
+class _SuccessConfirmationDialog extends StatelessWidget {
+  final SubmissionResult result;
+  final String serviceTitle;
+  final VoidCallback onClose;
+
+  const _SuccessConfirmationDialog({
+    required this.result,
+    required this.serviceTitle,
+    required this.onClose,
+  });
+
+  String _formatStatus(String status) {
+    switch (status.toUpperCase()) {
+      case 'DEPARTMENT_VERIFICATION_PENDING':
+        return 'Department Verification Pending';
+      case 'SECURITY_REVIEW_PENDING':
+        return 'Security Review Pending';
+      case 'STAFF_REVIEW_PENDING':
+        return 'Staff Review Pending';
+      case 'FEE_PAYMENT_PENDING':
+        return 'Payment Required';
+      case 'ADMIN_APPROVAL_PENDING':
+        return 'Admin Approval Pending';
+      case 'SUBMITTED':
+        return 'Submitted';
+      case 'COMPLETED':
+      case 'BOOKING_CONFIRMED':
+        return 'Completed';
+      default:
+        return status.replaceAll('_', ' ');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 440),
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                color: Color(0xFFDCFCE7),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.check_circle_rounded,
+                color: AppColors.statusApproved,
+                size: 38,
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Application Submitted!',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: AppColors.primaryNavy,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Your request has been registered in the UniFlow campus engine and dispatched for departmental verification.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: Column(
+                children: [
+                  _InfoRow(
+                    label: 'Tracking Number',
+                    value: result.requestNumber,
+                    isHighlight: true,
+                  ),
+                  const Divider(height: 16),
+                  _InfoRow(
+                    label: 'Service',
+                    value: serviceTitle,
+                  ),
+                  const Divider(height: 16),
+                  _InfoRow(
+                    label: 'Initial Status',
+                    value: _formatStatus(result.status),
+                    statusColor: AppColors.primaryBlue,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: onClose,
+                child: const Text('Done & Return to Services'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool isHighlight;
+  final Color? statusColor;
+
+  const _InfoRow({
+    required this.label,
+    required this.value,
+    this.isHighlight = false,
+    this.statusColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isHighlight ? FontWeight.w800 : FontWeight.w700,
+              color: statusColor ??
+                  (isHighlight ? AppColors.primaryBlue : AppColors.primaryNavy),
+            ),
+          ),
         ),
       ],
     );

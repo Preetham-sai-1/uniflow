@@ -21,30 +21,64 @@ class _ServicesCatalogueViewState extends State<ServicesCatalogueView> {
   String _selectedCategory = 'All';
   final _searchController = TextEditingController();
 
-  final List<String> _categories = [
-    'All',
-    'Academic & Records',
-    'Identity & Security',
-    'Facilities & Hardware',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    widget.appState.addListener(_onStateChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.appState.loadServices();
+    });
+  }
+
+  void _onStateChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
+    widget.appState.removeListener(_onStateChanged);
     _searchController.dispose();
     super.dispose();
   }
 
+  List<String> _getCategories(List<CampusServiceItem> services) {
+    final set = <String>{'All'};
+    for (final s in services) {
+      if (s.category.isNotEmpty) set.add(s.category);
+    }
+    return set.toList();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final filteredServices = CampusServiceItem.availableServices.where((s) {
-      final matchesCategory =
-          _selectedCategory == 'All' || s.category == _selectedCategory;
+    // Prefer backend services if loaded, otherwise fallback to availableServices if not errored
+    final List<CampusServiceItem> rawServices =
+        widget.appState.services.isNotEmpty
+            ? widget.appState.services
+            : (widget.appState.servicesError != null ||
+                    widget.appState.hasLoadedServices
+                ? <CampusServiceItem>[]
+                : CampusServiceItem.availableServices);
+
+    final categories = _getCategories(rawServices);
+    if (!categories.contains(_selectedCategory)) {
+      _selectedCategory = 'All';
+    }
+
+    final filteredServices = rawServices.where((s) {
+      final matchesCategory = _selectedCategory == 'All' ||
+          s.category.toLowerCase() == _selectedCategory.toLowerCase();
       final query = _searchController.text.trim().toLowerCase();
       final matchesQuery = query.isEmpty ||
           s.title.toLowerCase().contains(query) ||
           s.description.toLowerCase().contains(query);
       return matchesCategory && matchesQuery;
     }).toList();
+
+    final isLoading =
+        widget.appState.isLoadingServices && widget.appState.services.isEmpty;
+    final hasError = widget.appState.servicesError != null &&
+        widget.appState.services.isEmpty;
 
     return ResponsiveContainer(
       title: 'Campus Services',
@@ -79,47 +113,140 @@ class _ServicesCatalogueViewState extends State<ServicesCatalogueView> {
                         : null,
                   ),
                 ),
-                const SizedBox(height: 12),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: _categories.map((cat) {
-                      final isSelected = _selectedCategory == cat;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text(cat),
-                          selected: isSelected,
-                          onSelected: (_) =>
-                              setState(() => _selectedCategory = cat),
-                          selectedColor: const Color(0xFFEFF6FF),
-                          labelStyle: TextStyle(
-                            color: isSelected
-                                ? AppColors.primaryBlue
-                                : AppColors.textSecondary,
-                            fontWeight:
-                                isSelected ? FontWeight.w700 : FontWeight.w500,
-                            fontSize: 12,
+                if (categories.length > 1) ...[
+                  const SizedBox(height: 12),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: categories.map((cat) {
+                        final isSelected = _selectedCategory == cat;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(cat),
+                            selected: isSelected,
+                            onSelected: (_) =>
+                                setState(() => _selectedCategory = cat),
+                            selectedColor: const Color(0xFFEFF6FF),
+                            labelStyle: TextStyle(
+                              color: isSelected
+                                  ? AppColors.primaryBlue
+                                  : AppColors.textSecondary,
+                              fontWeight: isSelected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              fontSize: 12,
+                            ),
+                            backgroundColor: Colors.white,
+                            side: BorderSide(
+                              color: isSelected
+                                  ? AppColors.primaryBlue
+                                  : AppColors.borderSubtle,
+                            ),
                           ),
-                          backgroundColor: Colors.white,
-                          side: BorderSide(
-                            color: isSelected
-                                ? AppColors.primaryBlue
-                                : AppColors.borderSubtle,
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                        );
+                      }).toList(),
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
 
           const SizedBox(height: 24),
 
-          // Service Items Grid / List
-          if (filteredServices.isEmpty)
+          // Loading, Error, Empty, or Service Grid
+          if (isLoading)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(48),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: const Column(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text(
+                    'Loading campus services...',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primaryNavy,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (hasError)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(40),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.cloud_off_rounded,
+                      size: 48, color: AppColors.statusRejected),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Unable to load services from server',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: AppColors.primaryNavy,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    widget.appState.servicesError!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text('Retry Connection'),
+                    onPressed: () =>
+                        widget.appState.loadServices(forceRefresh: true),
+                  ),
+                ],
+              ),
+            )
+          else if (rawServices.isEmpty && widget.appState.hasLoadedServices)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(40),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: const Column(
+                children: [
+                  Icon(Icons.inventory_2_outlined,
+                      size: 48, color: AppColors.textMuted),
+                  SizedBox(height: 12),
+                  Text('No campus services available',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primaryNavy)),
+                  SizedBox(height: 4),
+                  Text('Check back later for active institutional services.',
+                      style: TextStyle(
+                          color: AppColors.textSecondary, fontSize: 12)),
+                ],
+              ),
+            )
+          else if (filteredServices.isEmpty)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(40),
@@ -168,6 +295,7 @@ class _ServicesCatalogueViewState extends State<ServicesCatalogueView> {
                           MaterialPageRoute(
                             builder: (_) => RequestFormView(
                               serviceType: service.type,
+                              service: service,
                               appState: widget.appState,
                             ),
                           ),

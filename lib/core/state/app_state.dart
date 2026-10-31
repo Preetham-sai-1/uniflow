@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import '../../models/journey_request.dart';
 import '../../models/role.dart';
 import '../../models/service_item.dart';
+import '../api/api_exceptions.dart';
 import '../auth/auth_service.dart';
+import '../services/student_workflow_service.dart';
 
 class AppState extends ChangeNotifier {
   final AuthService authService;
+  final StudentWorkflowService studentWorkflowService;
 
   UserRole _currentRole = UserRole.student;
   UserProfile _currentUser = UserProfile.studentUser;
@@ -15,10 +18,26 @@ class AppState extends ChangeNotifier {
 
   final List<JourneyRequest> _requests = [];
 
+  // Services Catalogue State
+  List<CampusServiceItem> _services = [];
+  bool _isLoadingServices = false;
+  bool _hasLoadedServices = false;
+  String? _servicesError;
+
+  // Request Submission State
+  bool _isSubmittingRequest = false;
+  String? _submitError;
+  SubmissionResult? _lastSubmissionResult;
+
   AppState({
     AuthService? authService,
+    StudentWorkflowService? studentWorkflowService,
     bool? initialAuthenticated,
   })  : authService = authService ?? AuthService(),
+        studentWorkflowService = studentWorkflowService ??
+            (authService != null
+                ? StudentWorkflowService(apiClient: authService.apiClient)
+                : StudentWorkflowService()),
         _isAuthenticated = initialAuthenticated ?? false {
     _initSeedData();
   }
@@ -29,6 +48,15 @@ class AppState extends ChangeNotifier {
   bool get isLoadingSession => _isLoadingSession;
   String? get sessionError => _sessionError;
   List<JourneyRequest> get requests => List.unmodifiable(_requests);
+
+  List<CampusServiceItem> get services => _services;
+  bool get isLoadingServices => _isLoadingServices;
+  bool get hasLoadedServices => _hasLoadedServices;
+  String? get servicesError => _servicesError;
+
+  bool get isSubmittingRequest => _isSubmittingRequest;
+  String? get submitError => _submitError;
+  SubmissionResult? get lastSubmissionResult => _lastSubmissionResult;
 
   // Filtered requests by current student or queue
   List<JourneyRequest> get studentRequests => _requests
@@ -110,7 +138,73 @@ class AppState extends ChangeNotifier {
     _currentUser = UserProfile.studentUser;
     _currentRole = UserRole.student;
     _sessionError = null;
+    _services = [];
+    _hasLoadedServices = false;
+    _servicesError = null;
+    _lastSubmissionResult = null;
     notifyListeners();
+  }
+
+  /// Fetches campus service catalogue from backend GET /api/services.
+  /// Caches result to avoid unnecessary duplicate API calls.
+  Future<void> loadServices({bool forceRefresh = false}) async {
+    if (_isLoadingServices) return;
+    if (!forceRefresh && _services.isNotEmpty) return;
+
+    _isLoadingServices = true;
+    _servicesError = null;
+    notifyListeners();
+
+    try {
+      final fetched = await studentWorkflowService.fetchServices();
+      _services = fetched;
+      _servicesError = null;
+      _hasLoadedServices = true;
+    } on ApiException catch (e) {
+      _servicesError = e.message;
+    } catch (e) {
+      _servicesError = 'Failed to load services. Please check connection.';
+    } finally {
+      _isLoadingServices = false;
+      notifyListeners();
+    }
+  }
+
+  /// Submits a student service request to backend POST /api/requests.
+  Future<SubmissionResult> submitStudentRequest({
+    required String serviceId,
+    required Map<String, dynamic> formData,
+  }) async {
+    _isSubmittingRequest = true;
+    _submitError = null;
+    notifyListeners();
+
+    try {
+      final result = await studentWorkflowService.submitRequest(
+        serviceId: serviceId,
+        formData: formData,
+      );
+      _lastSubmissionResult = result;
+
+      // Also prepend new request into the local requests list for instant display
+      try {
+        final newJourney = JourneyRequest.fromJson(result.raw);
+        _requests.insert(0, newJourney);
+      } catch (_) {
+        // Fallback gracefully if fields differ
+      }
+
+      return result;
+    } on ApiException catch (e) {
+      _submitError = e.message;
+      rethrow;
+    } catch (e) {
+      _submitError = 'Failed to submit request: ${e.toString()}';
+      rethrow;
+    } finally {
+      _isSubmittingRequest = false;
+      notifyListeners();
+    }
   }
 
   void _initSeedData() {

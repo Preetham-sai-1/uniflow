@@ -97,4 +97,3 @@ class AuthService {
     await tokenStorage.deleteToken();
   }
 }
-

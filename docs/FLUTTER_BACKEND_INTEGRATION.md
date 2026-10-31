@@ -524,10 +524,51 @@ The foundational client networking, secure session persistence, role mapping, an
    - Explicit allowlist supporting React development (`http://localhost:5173`, `http://127.0.0.1:5173`) and Flutter Web development (`http://localhost:7357`, `http://127.0.0.1:7357`, and `FLUTTER_WEB_URL`).
    - Non-browser native mobile requests pass through without CORS restrictions.
 
-6. **Automated Verification**:
+6. **Phase 1 Automated Verification**:
    - Flutter tests: 28/28 tests passing (`test/auth_integration_test.dart`, `test/widget_test.dart`, `test/responsiveness_test.dart`).
    - Backend tests: 84/84 tests passing (`tests/*.test.js`).
    - React frontend tests: 27/27 tests passing (`frontend/react_app/src/test/*.jsx`).
+
+### 10.2 Phase 2 Implemented: Student Services Catalogue & Request Submission
+
+1. **Domain Model Extensions (`lib/models/service_item.dart`, `lib/models/journey_request.dart`)**:
+   - `CampusServiceItem`: Extended with `id`, `slug`, `estimatedDays`, `requiredDocuments`, `responsibleDepartment`, and `workflowStepCount`.
+   - `ServiceType.fromSlug(String? slug)`: Bidirectional slug-to-enum mapper supporting `bonafide-certificate`, `id-card-replacement`, `equipment-booking`.
+   - `CampusServiceItem.fromJson(Map<String, dynamic> json)`: Authoritative deserializer for backend `GET /api/services` responses.
+   - `JourneyStatus.fromBackendString(String? status)`: State machine mapper converting backend runtime status strings (e.g., `DEPARTMENT_VERIFICATION_PENDING`, `SECURITY_REVIEW_PENDING`, `STAFF_REVIEW_PENDING`, `PAYMENT_REQUIRED`, `COMPLETED`, `REJECTED`) into typed enum values.
+   - `JourneyRequest.fromJson(Map<String, dynamic> json)`: Comprehensive deserializer for backend request models including runtime steps, student attributes, and audit timestamps.
+
+2. **Student Workflow Service (`lib/core/services/student_workflow_service.dart`)**:
+   - `StudentWorkflowService`: Communicates with backend using shared `ApiClient` and authenticated JWT Bearer headers.
+   - `fetchServices({String? category})`: Fetches service catalogue from `GET /api/services` with optional category query filtering.
+   - `submitRequest({required String serviceId, required Map<String, dynamic> formData})`: Posts new student requests to `POST /api/requests` with `{ serviceId, formData }` payload, returning a typed `SubmissionResult`.
+
+3. **Application State Integration (`lib/core/state/app_state.dart`)**:
+   - `loadServices({bool forceRefresh = false})`: Caches catalogue in memory to eliminate redundant network roundtrips; exposes `isLoadingServices`, `hasLoadedServices`, and `servicesError`.
+   - `submitStudentRequest({required String serviceId, required Map<String, dynamic> formData})`: Submits request to backend, records `lastSubmissionResult`, and immediately prepends the parsed `JourneyRequest` to the client's request list for real-time dashboard reflection.
+   - `logout()`: Clears cached services and submission state upon user sign-out.
+
+4. **Service Catalogue Presentation (`lib/views/student/services_catalogue_view.dart`)**:
+   - Loads services dynamically on initialization with M3 loading spinner.
+   - Displays friendly empty state when no services match or are available.
+   - Displays clear error banner with "Retry Connection" button on network/server failures.
+   - Preserves search filtering and dynamic category chips based on backend service categories.
+
+5. **Request Forms & Submission UX (`lib/views/student/request_form_view.dart`)**:
+   - Integrates the three campus request forms:
+     - **Bonafide Certificate**: `purpose`, `copies` (integer >= 1), `academicSemester`, `urgentProcessing`, `additionalDetails`.
+     - **ID Card Replacement**: Maps user reason to backend enum (`Lost`, `Damaged`, `Stolen`), enforces required police complaint reference when stolen, validates contact phone, and captures pickup location.
+     - **Equipment Booking**: Maps equipment category, purpose, designated timeslot, supervisor, and calculates ISO-8601 `startTime` and `endTime`.
+   - Submission state management: debounce protection, disabled button, and loading spinner during submission.
+   - Surfaces backend validation error messages in an inline error banner and toast snackbar.
+   - Displays `_SuccessConfirmationDialog` presenting the generated tracking number (e.g., `UF-20261031-XYZ`), initial status, service title, and guidance for next steps.
+
+6. **Automated Verification**:
+   - Flutter tests: 39/39 tests passing (`test/student_services_test.dart`, `test/auth_integration_test.dart`, `test/widget_test.dart`, `test/responsiveness_test.dart`).
+   - Backend tests: 84/84 tests passing (`tests/*.test.js`).
+   - React frontend tests: 27/27 tests passing (`frontend/react_app/src/test/*.jsx`).
+   - React production build: Zero errors (`vite build` in 15.29s).
+   - Flutter analyzer: Zero issues (`flutter analyze --no-pub`).
 
 ---
 

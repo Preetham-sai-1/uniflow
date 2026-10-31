@@ -17,4 +17,3 @@ class ApiEndpoints {
   static const String adminRequests = '/admin/requests';
   static const String notifications = '/notifications';
 }
-
