@@ -32,6 +32,16 @@ class _MyRequestsViewState extends State<MyRequestsView> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.appState.isAuthenticated) {
+        widget.appState.loadStudentRequests();
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
@@ -48,7 +58,8 @@ class _MyRequestsViewState extends State<MyRequestsView> {
           final query = _searchController.text.trim().toLowerCase();
           final matchesQuery = query.isEmpty ||
               req.id.toLowerCase().contains(query) ||
-              req.serviceType.title.toLowerCase().contains(query);
+              req.requestNumber.toLowerCase().contains(query) ||
+              req.effectiveServiceName.toLowerCase().contains(query);
 
           bool matchesFilter = true;
           switch (_filter) {
@@ -72,217 +83,320 @@ class _MyRequestsViewState extends State<MyRequestsView> {
           return matchesQuery && matchesFilter;
         }).toList();
 
-        return ResponsiveContainer(
-          title: 'My Requests',
-          subtitle:
-              'Track your submitted campus service applications in real time.',
-          trailing: ElevatedButton.icon(
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('New Request'),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => Scaffold(
-                    appBar: AppBar(title: const Text('Services Catalogue')),
-                    body: ServicesCatalogueView(appState: widget.appState),
+        final isLoading = widget.appState.isLoadingRequests &&
+            widget.appState.studentRequests.isEmpty;
+        final hasError = widget.appState.requestsError != null &&
+            (!widget.appState.hasLoadedRequests ||
+                widget.appState.studentRequests.isEmpty);
+
+        return RefreshIndicator(
+          onRefresh: () =>
+              widget.appState.loadStudentRequests(forceRefresh: true),
+          child: ResponsiveContainer(
+            title: 'My Requests',
+            subtitle:
+                'Track your submitted campus service applications in real time.',
+            trailing: ElevatedButton.icon(
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('New Request'),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => Scaffold(
+                      appBar: AppBar(title: const Text('Services Catalogue')),
+                      body: ServicesCatalogueView(appState: widget.appState),
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Search & Filter Card
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.borderSubtle),
-                ),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _searchController,
-                      onChanged: (_) => setState(() {}),
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                        hintText:
-                            'Search by ID (e.g. UF-2026-0018) or service name...',
-                        suffixIcon: _searchController.text.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() {});
-                                },
-                              )
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: _filters.map((f) {
-                          final isSelected = _filter == f;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(f),
-                              selected: isSelected,
-                              onSelected: (_) => setState(() => _filter = f),
-                              selectedColor: const Color(0xFFEFF6FF),
-                              labelStyle: TextStyle(
-                                color: isSelected
-                                    ? AppColors.primaryBlue
-                                    : AppColors.textSecondary,
-                                fontWeight: isSelected
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
-                                fontSize: 12,
-                              ),
-                              backgroundColor: Colors.white,
-                              side: BorderSide(
-                                color: isSelected
-                                    ? AppColors.primaryBlue
-                                    : AppColors.borderSubtle,
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Request List
-              if (filtered.isEmpty)
+                );
+              },
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Search & Filter Card
                 Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(40),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: AppColors.borderSubtle),
                   ),
-                  child: const Column(
+                  child: Column(
                     children: [
-                      Icon(Icons.inbox_rounded,
-                          size: 48, color: AppColors.textMuted),
-                      SizedBox(height: 12),
-                      Text('No requests found',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primaryNavy)),
-                      SizedBox(height: 4),
-                      Text('Try changing your filters or create a new request.',
-                          style: TextStyle(
-                              color: AppColors.textSecondary, fontSize: 12)),
-                    ],
-                  ),
-                )
-              else
-                ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final req = filtered[index];
-                    return InkWell(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => RequestDetailView(
-                              requestId: req.id,
-                              appState: widget.appState,
-                            ),
-                          ),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppColors.borderSubtle),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEFF6FF),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(req.serviceType.icon,
-                                  color: AppColors.primaryBlue, size: 20),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Wrap(
-                                    crossAxisAlignment:
-                                        WrapCrossAlignment.center,
-                                    children: [
-                                      Text(
-                                        req.serviceType.title,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 14,
-                                          color: AppColors.primaryNavy,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '(${req.id})',
-                                        style: const TextStyle(
-                                          color: AppColors.textMuted,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    'Submitted: ${_formatDate(req.submittedAt)} • Last update: ${_formatDate(req.updatedAt)}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: StatusBadge(
-                                  status: req.status, isCompact: true),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.chevron_right_rounded,
-                                color: AppColors.textMuted, size: 20),
-                          ],
+                      TextField(
+                        controller: _searchController,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          prefixIcon:
+                              const Icon(Icons.search_rounded, size: 20),
+                          hintText:
+                              'Search by ID (e.g. UF-2026-0018) or service name...',
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 18),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {});
+                                  },
+                                )
+                              : null,
                         ),
                       ),
-                    );
-                  },
+                      const SizedBox(height: 12),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: _filters.map((f) {
+                            final isSelected = _filter == f;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(f),
+                                selected: isSelected,
+                                onSelected: (_) => setState(() => _filter = f),
+                                selectedColor: const Color(0xFFEFF6FF),
+                                labelStyle: TextStyle(
+                                  color: isSelected
+                                      ? AppColors.primaryBlue
+                                      : AppColors.textSecondary,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  fontSize: 12,
+                                ),
+                                backgroundColor: Colors.white,
+                                side: BorderSide(
+                                  color: isSelected
+                                      ? AppColors.primaryBlue
+                                      : AppColors.borderSubtle,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-            ],
+
+                const SizedBox(height: 20),
+
+                // Request List State Handling
+                if (isLoading)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(48),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.borderSubtle),
+                    ),
+                    child: const Column(
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text(
+                          'Loading your requests...',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primaryNavy,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (hasError)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(40),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.borderSubtle),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.cloud_off_rounded,
+                            size: 48, color: AppColors.statusRejected),
+                        const SizedBox(height: 14),
+                        const Text(
+                          'Unable to load requests from server',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                            color: AppColors.primaryNavy,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          widget.appState.requestsError!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          label: const Text('Retry Connection'),
+                          onPressed: () => widget.appState
+                              .loadStudentRequests(forceRefresh: true),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (filtered.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(40),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.borderSubtle),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.inbox_rounded,
+                            size: 48, color: AppColors.textMuted),
+                        const SizedBox(height: 12),
+                        const Text('No requests found',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primaryNavy)),
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.appState.hasLoadedRequests
+                              ? 'You have not submitted any requests yet. Start one from the catalogue!'
+                              : 'Try changing your filters or create a new request.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: AppColors.textSecondary, fontSize: 12),
+                        ),
+                        if (widget.appState.hasLoadedRequests) ...[
+                          const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.add, size: 16),
+                            label: const Text('Browse Services'),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => Scaffold(
+                                    appBar: AppBar(
+                                        title:
+                                            const Text('Services Catalogue')),
+                                    body: ServicesCatalogueView(
+                                        appState: widget.appState),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ],
+                    ),
+                  )
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final req = filtered[index];
+                      return InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => RequestDetailView(
+                                requestId: req.backendId ?? req.id,
+                                initialRequest: req,
+                                appState: widget.appState,
+                              ),
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.borderSubtle),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEFF6FF),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(req.serviceType.icon,
+                                    color: AppColors.primaryBlue, size: 20),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Wrap(
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        Text(
+                                          req.effectiveServiceName,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14,
+                                            color: AppColors.primaryNavy,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '(${req.requestNumber})',
+                                          style: const TextStyle(
+                                            color: AppColors.textMuted,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      'Submitted: ${_formatDate(req.submittedAt)} • Last update: ${_formatDate(req.updatedAt)}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: StatusBadge(
+                                    status: req.status, isCompact: true),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.chevron_right_rounded,
+                                  color: AppColors.textMuted, size: 20),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
           ),
         );
       },

@@ -29,6 +29,16 @@ class AppState extends ChangeNotifier {
   String? _submitError;
   SubmissionResult? _lastSubmissionResult;
 
+  // Student Requests State
+  List<JourneyRequest> _studentRequests = [];
+  bool _isLoadingRequests = false;
+  bool _hasLoadedRequests = false;
+  String? _requestsError;
+
+  // Payment Processing State
+  bool _isProcessingPayment = false;
+  String? _paymentError;
+
   AppState({
     AuthService? authService,
     StudentWorkflowService? studentWorkflowService,
@@ -38,7 +48,8 @@ class AppState extends ChangeNotifier {
             (authService != null
                 ? StudentWorkflowService(apiClient: authService.apiClient)
                 : StudentWorkflowService()),
-        _isAuthenticated = initialAuthenticated ?? false {
+        _isAuthenticated = initialAuthenticated ??
+            (studentWorkflowService != null || authService != null) {
     _initSeedData();
   }
 
@@ -58,12 +69,19 @@ class AppState extends ChangeNotifier {
   String? get submitError => _submitError;
   SubmissionResult? get lastSubmissionResult => _lastSubmissionResult;
 
-  // Filtered requests by current student or queue
-  List<JourneyRequest> get studentRequests => _requests
-      .where((r) =>
-          r.studentId == _currentUser.id ||
-          r.studentId == UserProfile.studentUser.id)
-      .toList();
+  List<JourneyRequest> get studentRequests => _hasLoadedRequests
+      ? List.unmodifiable(_studentRequests)
+      : _requests
+          .where((r) =>
+              r.studentId == _currentUser.id ||
+              r.studentId == UserProfile.studentUser.id)
+          .toList();
+
+  bool get isLoadingRequests => _isLoadingRequests;
+  bool get hasLoadedRequests => _hasLoadedRequests;
+  String? get requestsError => _requestsError;
+  bool get isProcessingPayment => _isProcessingPayment;
+  String? get paymentError => _paymentError;
 
   List<JourneyRequest> get staffQueue => _requests
       .where((r) =>
@@ -142,7 +160,140 @@ class AppState extends ChangeNotifier {
     _hasLoadedServices = false;
     _servicesError = null;
     _lastSubmissionResult = null;
+    _studentRequests = [];
+    _hasLoadedRequests = false;
+    _requestsError = null;
+    _paymentError = null;
     notifyListeners();
+  }
+
+  /// Locates a request by id, MongoDB ObjectId (backendId), or human-readable requestNumber.
+  JourneyRequest? findRequest(String idOrBackendId) {
+    try {
+      return _studentRequests.firstWhere(
+        (r) =>
+            r.id == idOrBackendId ||
+            r.backendId == idOrBackendId ||
+            r.requestNumber == idOrBackendId,
+      );
+    } catch (_) {
+      try {
+        return _requests.firstWhere(
+          (r) =>
+              r.id == idOrBackendId ||
+              r.backendId == idOrBackendId ||
+              r.requestNumber == idOrBackendId,
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  /// Fetches authenticated student's requests from GET /api/requests.
+  Future<void> loadStudentRequests({bool forceRefresh = false}) async {
+    if (_isLoadingRequests) return;
+    if (!forceRefresh && _hasLoadedRequests) return;
+
+    _isLoadingRequests = true;
+    _requestsError = null;
+    notifyListeners();
+
+    try {
+      final fetched = await studentWorkflowService.fetchStudentRequests();
+      _studentRequests = fetched;
+      _hasLoadedRequests = true;
+      _requestsError = null;
+
+      // Sync with _requests for any active views
+      for (final item in fetched) {
+        final idx = _requests.indexWhere((r) =>
+            r.id == item.id ||
+            (r.backendId != null && r.backendId == item.backendId));
+        if (idx != -1) {
+          _requests[idx] = item;
+        } else {
+          _requests.insert(0, item);
+        }
+      }
+    } on ApiException catch (e) {
+      _requestsError = e.message;
+    } catch (e) {
+      _requestsError = 'Failed to load requests. Please check connection.';
+    } finally {
+      _isLoadingRequests = false;
+      notifyListeners();
+    }
+  }
+
+  /// Fetches detailed request instance from GET /api/requests/:id.
+  Future<JourneyRequest> loadRequestDetails(String id) async {
+    final req = await studentWorkflowService.fetchRequestDetails(id);
+
+    // Update in _studentRequests
+    final sIdx = _studentRequests.indexWhere((r) =>
+        r.id == req.id ||
+        (r.backendId != null && r.backendId == req.backendId));
+    if (sIdx != -1) {
+      _studentRequests[sIdx] = req;
+    } else {
+      _studentRequests.insert(0, req);
+    }
+
+    // Update in _requests
+    final idx = _requests.indexWhere((r) =>
+        r.id == req.id ||
+        (r.backendId != null && r.backendId == req.backendId));
+    if (idx != -1) {
+      _requests[idx] = req;
+    } else {
+      _requests.insert(0, req);
+    }
+
+    notifyListeners();
+    return req;
+  }
+
+  /// Submits simulated fee payment via PATCH /api/requests/:id/payment.
+  Future<JourneyRequest> submitStudentPayment(String id) async {
+    _isProcessingPayment = true;
+    _paymentError = null;
+    notifyListeners();
+
+    try {
+      final updated = await studentWorkflowService.confirmSimulatedPayment(id);
+
+      // Update in _studentRequests
+      final sIdx = _studentRequests.indexWhere((r) =>
+          r.id == updated.id ||
+          (r.backendId != null && r.backendId == updated.backendId));
+      if (sIdx != -1) {
+        _studentRequests[sIdx] = updated;
+      } else {
+        _studentRequests.insert(0, updated);
+      }
+
+      // Update in _requests
+      final idx = _requests.indexWhere((r) =>
+          r.id == updated.id ||
+          (r.backendId != null && r.backendId == updated.backendId));
+      if (idx != -1) {
+        _requests[idx] = updated;
+      } else {
+        _requests.insert(0, updated);
+      }
+
+      return updated;
+    } on ApiException catch (e) {
+      _paymentError = e.message;
+      rethrow;
+    } catch (e) {
+      _paymentError = e.toString();
+      rethrow;
+    } finally {
+      _isProcessingPayment = false;
+      notifyListeners();
+    }
   }
 
   /// Fetches campus service catalogue from backend GET /api/services.

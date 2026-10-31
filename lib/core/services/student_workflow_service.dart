@@ -1,5 +1,6 @@
 import '../api/api_client.dart';
 import '../api/api_endpoints.dart';
+import '../../models/journey_request.dart';
 import '../../models/service_item.dart';
 
 /// Encapsulates the verified result of a successful request creation.
@@ -86,5 +87,56 @@ class StudentWorkflowService {
 
     final data = response.data as Map<String, dynamic>;
     return SubmissionResult.fromJson(data);
+  }
+
+  /// Fetches the authenticated student's request history from GET /api/requests.
+  Future<List<JourneyRequest>> fetchStudentRequests({
+    String? status,
+    int page = 1,
+    int limit = 50,
+  }) async {
+    final queryParams = <String, dynamic>{
+      'page': page,
+      'limit': limit,
+    };
+    if (status != null && status.isNotEmpty && status != 'All') {
+      queryParams['status'] = status;
+    }
+
+    final response = await apiClient.get(
+      ApiEndpoints.requests,
+      queryParameters: queryParams,
+      requiresAuth: true,
+    );
+
+    final data = response.data;
+    if (data is List) {
+      return data
+          .map((item) => JourneyRequest.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  /// Fetches comprehensive request details from GET /api/requests/:id.
+  Future<JourneyRequest> fetchRequestDetails(String id) async {
+    final response = await apiClient.get(
+      ApiEndpoints.requestDetails(id),
+      requiresAuth: true,
+    );
+
+    final data = response.data as Map<String, dynamic>;
+    return JourneyRequest.fromJson(data);
+  }
+
+  /// Confirms simulated fee payment for ID Card Replacement via PATCH /api/requests/:id/payment.
+  Future<JourneyRequest> confirmSimulatedPayment(String id) async {
+    final response = await apiClient.patch(
+      ApiEndpoints.requestPayment(id),
+      requiresAuth: true,
+    );
+
+    final data = response.data as Map<String, dynamic>;
+    return JourneyRequest.fromJson(data);
   }
 }

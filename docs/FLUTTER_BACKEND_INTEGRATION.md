@@ -570,6 +570,53 @@ The foundational client networking, secure session persistence, role mapping, an
    - React production build: Zero errors (`vite build` in 15.29s).
    - Flutter analyzer: Zero issues (`flutter analyze --no-pub`).
 
+### 10.3 Phase 3 Implemented: Student Request History, Details & Tracking [COMPLETED]
+
+1. **Domain Model Extensions (`lib/models/journey_request.dart`)**:
+   - `TimelineStep`: Extended with `stepIndex` (zero-based sequence), `isPaymentStep` (flags payment-gated stages), and `status` (e.g. `PENDING`, `APPROVED`, `REJECTED`, `PAYMENT_COMPLETED`).
+   - `JourneyRequest`: Extended with `backendId` (MongoDB ObjectId required for detail and payment routes), `requestNumber` (human-readable tracking code, e.g. `UF-20261031-XYZ`), `serviceName` (populated campus service label), and `backendStatus` (exact backend enum string).
+   - Dynamic getters `effectiveServiceName` and `effectiveId` ensuring seamless fallback between backend and legacy seed identifiers.
+   - `JourneyRequest.fromJson(Map<String, dynamic> json)`: Comprehensive deserializer handling populated service documents, runtime step collections, audit log rejection remarks, payment flags, and fees (defaulting to ₹200 for ID Card replacement).
+
+2. **Student Workflow Service API Contracts (`lib/core/services/student_workflow_service.dart`, `lib/core/api/api_endpoints.dart`)**:
+   - Added endpoint helper methods: `ApiEndpoints.requestDetails(id)` -> `/requests/:id`, `ApiEndpoints.requestPayment(id)` -> `/requests/:id/payment`.
+   - `fetchStudentRequests({String? status, int page = 1, int limit = 50})`: Queries `GET /api/requests` with authenticated Bearer token and optional query filters, parsing `{ success: true, data: [...] }`.
+   - `fetchRequestDetails(String id)`: Calls `GET /api/requests/:id` with Bearer token, extracting the fully populated request document with `runtimeSteps` and `auditLog`.
+   - `confirmSimulatedPayment(String id)`: Sends empty JSON payload `{}` via `PATCH /api/requests/:id/payment`, advancing status from `PAYMENT_REQUIRED` to next step (typically `ADMIN_APPROVAL_PENDING`).
+
+3. **Application State Integration (`lib/core/state/app_state.dart`)**:
+   - Added reactive state fields: `_studentRequests`, `_isLoadingRequests`, `_hasLoadedRequests`, `_requestsError`, `_isProcessingPayment`, `_paymentError`.
+   - `loadStudentRequests({bool forceRefresh = false})`: Caches requests in memory, prevents duplicate in-flight requests, and reconciles incoming records with local state.
+   - `loadRequestDetails(String id)`: Fetches full request details and updates the instance in both `_studentRequests` and global `_requests`.
+   - `submitStudentPayment(String id)`: Calls payment confirmation API, updates local request status in place, and notifies listeners.
+   - Preserved synchronous fallback `studentPayFee(...)` for offline/widget test compatibility.
+   - `findRequest(String idOrBackendId)`: Omnichannel lookup resolving by MongoDB ObjectId, tracking request number, or legacy seed id.
+
+4. **Student Request History Screen (`lib/views/student/my_requests_view.dart`)**:
+   - Connected directly to `appState.studentRequests` and `appState.loadStudentRequests()`.
+   - Pull-to-refresh integration via `RefreshIndicator`.
+   - Stateful rendering handling: loading spinner, empty state with quick navigation to Service Catalogue, and error banner with "Retry Connection".
+   - Search bar filtering requests by tracking code or service name.
+   - Category filter chips: `All`, `In Progress`, `Completed`, `Action Required`, `Rejected`.
+   - Navigates to `RequestDetailView` passing MongoDB `backendId` and current request instance.
+
+5. **Request Details & Stepper Tracking Screen (`lib/views/student/request_detail_view.dart`)**:
+   - Converted to `StatefulWidget` fetching live details via `appState.loadRequestDetails(...)` on initialization.
+   - Pull-to-refresh and top AppBar refresh icon.
+   - Header card showing service name, tracking request number, submission date, and responsible department.
+   - Status badge and rejection alert banner with reviewer feedback remarks when status is `JourneyStatus.rejected`.
+   - Dynamic stepper timeline via `JourneyTimelineWidget` reflecting actual backend `runtimeSteps`, assigned roles, completion states, and timestamps.
+   - Simulated payment callout card: displayed exclusively when `status == JourneyStatus.paymentRequired`, clearly marked as simulated demonstration with disabled button and spinner during network processing.
+   - Successfully confirms fee payment, shows success SnackBar, and advances timeline to Administrative Approval.
+   - Clean 404 (Not Found) and 403 (Unauthorized) error handling with retry and back navigation.
+
+6. **Automated Verification**:
+   - Flutter tests: 50/50 tests passing across 5 suites (`test/request_history_and_tracking_test.dart`, `test/student_services_test.dart`, `test/auth_integration_test.dart`, `test/widget_test.dart`, `test/responsiveness_test.dart`).
+   - Backend tests: 84/84 tests passing (`tests/*.test.js`).
+   - React frontend tests: 27/27 tests passing (`frontend/react_app/src/test/*.jsx`).
+   - React production build: Zero errors (`vite build` in 1.73s).
+   - Flutter analyzer: Zero issues (`flutter analyze --no-pub`).
+
 ---
 
 ## 11. Recommended Phased Implementation Order

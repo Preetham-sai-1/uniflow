@@ -51,6 +51,12 @@ class ApiClient {
       final token = await _tokenStorage.getToken();
       if (token != null && token.isNotEmpty) {
         headers['Authorization'] = 'Bearer $token';
+      } else {
+        throw const ApiException(
+          statusCode: 401,
+          code: 'AUTH_REQUIRED',
+          message: 'Authentication required. No session token found.',
+        );
       }
     }
 

@@ -16,4 +16,10 @@ class ApiEndpoints {
   static const String adminStats = '/admin/stats';
   static const String adminRequests = '/admin/requests';
   static const String notifications = '/notifications';
+
+  /// Helper to build path for GET /api/requests/:id
+  static String requestDetails(String id) => '/requests/$id';
+
+  /// Helper to build path for PATCH /api/requests/:id/payment
+  static String requestPayment(String id) => '/requests/$id/payment';
 }

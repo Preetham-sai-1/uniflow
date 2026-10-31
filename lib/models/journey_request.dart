@@ -127,6 +127,9 @@ class TimelineStep {
   final bool isCurrent;
   final bool isRejected;
   final String? comment;
+  final int stepIndex;
+  final bool isPaymentStep;
+  final String status;
 
   const TimelineStep({
     required this.title,
@@ -138,6 +141,9 @@ class TimelineStep {
     this.isCurrent = false,
     this.isRejected = false,
     this.comment,
+    this.stepIndex = 0,
+    this.isPaymentStep = false,
+    this.status = 'PENDING',
   });
 
   TimelineStep copyWith({
@@ -150,6 +156,9 @@ class TimelineStep {
     bool? isCurrent,
     bool? isRejected,
     String? comment,
+    int? stepIndex,
+    bool? isPaymentStep,
+    String? status,
   }) {
     return TimelineStep(
       title: title ?? this.title,
@@ -161,18 +170,25 @@ class TimelineStep {
       isCurrent: isCurrent ?? this.isCurrent,
       isRejected: isRejected ?? this.isRejected,
       comment: comment ?? this.comment,
+      stepIndex: stepIndex ?? this.stepIndex,
+      isPaymentStep: isPaymentStep ?? this.isPaymentStep,
+      status: status ?? this.status,
     );
   }
 }
 
 class JourneyRequest {
   final String id;
+  final String? backendId;
+  final String requestNumber;
   final ServiceType serviceType;
+  final String serviceName;
   final String studentId;
   final String studentName;
   final String studentRoll;
   final String department;
   final JourneyStatus status;
+  final String backendStatus;
   final DateTime submittedAt;
   final DateTime updatedAt;
   final Map<String, String> formData;
@@ -182,15 +198,20 @@ class JourneyRequest {
   final String? staffComment;
   final String? adminComment;
   final String? rejectionReason;
+  final int currentStepIndex;
 
   const JourneyRequest({
     required this.id,
+    this.backendId,
+    String? requestNumber,
     required this.serviceType,
+    String? serviceName,
     required this.studentId,
     required this.studentName,
     required this.studentRoll,
     required this.department,
     required this.status,
+    String? backendStatus,
     required this.submittedAt,
     required this.updatedAt,
     required this.formData,
@@ -200,16 +221,28 @@ class JourneyRequest {
     this.staffComment,
     this.adminComment,
     this.rejectionReason,
-  });
+    this.currentStepIndex = 0,
+  })  : requestNumber = requestNumber ?? id,
+        serviceName = serviceName ?? '',
+        backendStatus = backendStatus ?? '';
+
+  String get effectiveServiceName =>
+      serviceName.isNotEmpty ? serviceName : serviceType.title;
+
+  String get effectiveId => backendId ?? id;
 
   JourneyRequest copyWith({
     String? id,
+    String? backendId,
+    String? requestNumber,
     ServiceType? serviceType,
+    String? serviceName,
     String? studentId,
     String? studentName,
     String? studentRoll,
     String? department,
     JourneyStatus? status,
+    String? backendStatus,
     DateTime? submittedAt,
     DateTime? updatedAt,
     Map<String, String>? formData,
@@ -219,15 +252,20 @@ class JourneyRequest {
     String? staffComment,
     String? adminComment,
     String? rejectionReason,
+    int? currentStepIndex,
   }) {
     return JourneyRequest(
       id: id ?? this.id,
+      backendId: backendId ?? this.backendId,
+      requestNumber: requestNumber ?? this.requestNumber,
       serviceType: serviceType ?? this.serviceType,
+      serviceName: serviceName ?? this.serviceName,
       studentId: studentId ?? this.studentId,
       studentName: studentName ?? this.studentName,
       studentRoll: studentRoll ?? this.studentRoll,
       department: department ?? this.department,
       status: status ?? this.status,
+      backendStatus: backendStatus ?? this.backendStatus,
       submittedAt: submittedAt ?? this.submittedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       formData: formData ?? this.formData,
@@ -237,6 +275,7 @@ class JourneyRequest {
       staffComment: staffComment ?? this.staffComment,
       adminComment: adminComment ?? this.adminComment,
       rejectionReason: rejectionReason ?? this.rejectionReason,
+      currentStepIndex: currentStepIndex ?? this.currentStepIndex,
     );
   }
 
@@ -245,6 +284,7 @@ class JourneyRequest {
     final slug =
         serviceData?['slug'] as String? ?? json['serviceSlug'] as String? ?? '';
     final serviceType = ServiceType.fromSlug(slug);
+    final serviceName = serviceData?['name'] as String? ?? serviceType.title;
 
     final studentData = json['student'] as Map<String, dynamic>?;
     final studentId = studentData?['_id'] as String? ??
@@ -253,48 +293,144 @@ class JourneyRequest {
         '';
     final studentName = studentData?['name'] as String? ?? 'Student';
     final studentRoll = studentData?['studentId'] as String? ?? '';
-    final dept = studentData?['department'] as String? ?? 'General';
+
+    String dept = 'General';
+    if (serviceData?['responsibleDepartment'] is Map<String, dynamic>) {
+      dept =
+          serviceData!['responsibleDepartment']['name'] as String? ?? 'General';
+    } else if (studentData?['department'] is String) {
+      dept = studentData!['department'] as String;
+    }
 
     final statusStr = json['status'] as String? ?? 'SUBMITTED';
     final status = JourneyStatus.fromBackendString(statusStr);
+    final currentStepIdx = json['currentStepIndex'] as int? ?? 0;
 
     final rawFormData = json['formData'] as Map<String, dynamic>? ?? {};
     final formData =
         rawFormData.map((k, v) => MapEntry(k, v?.toString() ?? ''));
 
     final rawSteps = (json['runtimeSteps'] as List<dynamic>?) ?? [];
-    final timeline = rawSteps.map<TimelineStep>((step) {
-      final s = step as Map<String, dynamic>;
-      final stepStatus = s['status'] as String? ?? 'PENDING';
-      final isCompleted = stepStatus == 'APPROVED' ||
-          stepStatus == 'PAID' ||
-          stepStatus == 'COMPLETED';
-      final isCurrent = stepStatus == 'PENDING';
-      final isRejected = stepStatus == 'REJECTED';
+    final isReqCompleted = status == JourneyStatus.approved;
+    final isReqRejected = status == JourneyStatus.rejected;
+
+    final timeline = rawSteps.asMap().entries.map<TimelineStep>((entry) {
+      final idx = entry.key;
+      final s = entry.value as Map<String, dynamic>;
+      final stepName = s['name'] as String? ?? 'Workflow Step';
+      final stepRole = (s['assignedRole'] as String? ?? 'Staff').toUpperCase();
+      final stepStatus = (s['status'] as String? ?? 'PENDING').toUpperCase();
+      final isPaymentStep = s['isPaymentStep'] == true;
       final actorData = s['actor'] as Map<String, dynamic>?;
+      final actorName = actorData?['name'] as String?;
+      final comment = s['comment'] as String?;
+      final actionedAtStr = s['actionedAt'] as String?;
+      final timestamp = actionedAtStr != null
+          ? DateTime.tryParse(actionedAtStr) ?? DateTime.now()
+          : DateTime.now();
+
+      final isCompleted = stepStatus == 'APPROVED' ||
+          stepStatus == 'PAYMENT_COMPLETED' ||
+          stepStatus == 'PAID' ||
+          (idx < currentStepIdx && !isReqRejected);
+      final isRejected = stepStatus == 'REJECTED';
+      final isCurrent =
+          idx == currentStepIdx && !isReqCompleted && !isReqRejected;
+
+      String description;
+      if (isRejected) {
+        description = comment != null && comment.isNotEmpty
+            ? 'Rejected: $comment'
+            : 'Rejected by $stepRole';
+      } else if (isCompleted) {
+        if (isPaymentStep) {
+          description = 'Simulated fee payment verified and confirmed.';
+        } else {
+          description = actorName != null
+              ? 'Approved by $actorName ($stepRole)'
+              : 'Approved by $stepRole authority';
+        }
+      } else if (isCurrent) {
+        if (isPaymentStep) {
+          description =
+              'Action Required: Simulated fee payment needed to proceed.';
+        } else {
+          description = 'Active review checkpoint — awaiting $stepRole action';
+        }
+      } else {
+        description = 'Upcoming verification step';
+      }
+
       return TimelineStep(
-        title: s['name'] as String? ?? 'Workflow Step',
-        description: 'Status: $stepStatus',
-        actorRole: s['assignedRole'] as String? ?? 'Staff',
-        actorName: actorData?['name'] as String?,
-        timestamp: s['actionedAt'] != null
-            ? DateTime.tryParse(s['actionedAt'].toString()) ?? DateTime.now()
-            : DateTime.now(),
+        title: stepName,
+        description: description,
+        actorRole: stepRole,
+        actorName: actorName,
+        timestamp: timestamp,
         isCompleted: isCompleted,
         isCurrent: isCurrent,
         isRejected: isRejected,
-        comment: s['comment'] as String?,
+        comment: comment,
+        stepIndex: idx,
+        isPaymentStep: isPaymentStep,
+        status: stepStatus,
       );
     }).toList();
 
+    // Check if rejection reason is present in rejected step or auditLog
+    String? rejectionReason;
+    if (isReqRejected) {
+      final rejectedStep = timeline.cast<TimelineStep?>().firstWhere(
+            (st) => st?.isRejected == true,
+            orElse: () => null,
+          );
+      rejectionReason = rejectedStep?.comment;
+
+      if (rejectionReason == null) {
+        final auditLog = json['auditLog'] as List<dynamic>?;
+        if (auditLog != null && auditLog.isNotEmpty) {
+          final lastRejection = auditLog.reversed.firstWhere(
+            (log) => (log as Map<String, dynamic>)['action'] == 'REJECTED',
+            orElse: () => null,
+          );
+          if (lastRejection != null) {
+            rejectionReason = lastRejection['comment'] as String?;
+          }
+        }
+      }
+    }
+
+    final backendId = json['_id']?.toString() ?? json['id']?.toString();
+    final requestNumber = json['requestNumber']?.toString() ?? backendId ?? '';
+
+    // Fee calculation: check formData or fallback for ID Card
+    double fee = 0.0;
+    if (slug == 'id-card-replacement') {
+      fee = 200.0;
+      final rawFeeStr = formData['Estimated Fee'] ?? formData['estimatedFee'];
+      if (rawFeeStr != null) {
+        final numeric = rawFeeStr.replaceAll(RegExp(r'[^0-9.]'), '');
+        final parsed = double.tryParse(numeric);
+        if (parsed != null && parsed > 0) fee = parsed;
+      }
+    }
+
+    final isFeePaid = timeline.any((st) =>
+        st.isPaymentStep &&
+        (st.isCompleted || st.status == 'PAYMENT_COMPLETED'));
+
     return JourneyRequest(
-      id: json['requestNumber'] as String? ?? json['_id'] as String? ?? '',
+      id: requestNumber.isNotEmpty ? requestNumber : (backendId ?? ''),
+      backendId: backendId,
+      requestNumber: requestNumber,
       serviceType: serviceType,
+      serviceName: serviceName,
       studentId: studentId,
       studentName: studentName,
       studentRoll: studentRoll,
       department: dept,
       status: status,
+      backendStatus: statusStr,
       submittedAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
@@ -303,8 +439,10 @@ class JourneyRequest {
           : DateTime.now(),
       formData: formData,
       timeline: timeline,
-      feeAmount: slug == 'id-card-replacement' ? 200.0 : 0.0,
-      isFeePaid: false,
+      feeAmount: fee,
+      isFeePaid: isFeePaid,
+      rejectionReason: rejectionReason,
+      currentStepIndex: currentStepIdx,
     );
   }
 }
