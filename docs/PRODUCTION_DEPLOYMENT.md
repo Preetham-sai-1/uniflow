@@ -28,6 +28,7 @@ The UniFlow production architecture follows a strict separation of concerns acro
                                ┌───────────────────────────┐
                                │    Render Web Service     │
                                │  (Node.js / Express API)  │
+                               │  uniflow-jiiw.onrender    │
                                └─────────────┬─────────────┘
                                              │
                                    TLS (Mongoose / SRV)
@@ -36,15 +37,15 @@ The UniFlow production architecture follows a strict separation of concerns acro
                                              ▼
                                ┌───────────────────────────┐
                                │       MongoDB Atlas       │
-                               │   (M10+ Replica Cluster)  │
+                               │      (uniflow_prod)       │
                                └───────────────────────────┘
 ```
 
 | Component | Technology | Target Platform | Inbound Protocol | Port / Binding |
 |---|---|---|---|---|
 | **Web Portal** | Flutter Web (HTML5/Wasm/CanvasKit) | **Firebase Hosting** | HTTPS (TLS 1.3) | Default CDN |
-| **Backend API** | Node.js (v18+) / Express / Mongoose | **Render** | HTTPS (TLS 1.3) | `0.0.0.0:$PORT` |
-| **Database** | MongoDB (v7+) Replica Set | **MongoDB Atlas** | TLS / TCP | Default (27017) |
+| **Backend API** | Node.js (v18+) / Express / Mongoose | **Render** (`uniflow-jiiw`) | HTTPS (TLS 1.3) | `0.0.0.0:$PORT` |
+| **Database** | MongoDB (v7+) Replica Set | **MongoDB Atlas** (`uniflow_prod`) | TLS / TCP | Default (27017) |
 | **Mobile App** | Flutter Native Release APK | **Android Device** | HTTPS (TLS 1.3) | Native Mobile |
 
 ---
@@ -86,7 +87,7 @@ The UniFlow production architecture follows a strict separation of concerns acro
 ### 2.3 Flutter Web Release Build Command
 Compile the Flutter Web client targeting the Render production API:
 ```bash
-flutter build web --release --dart-define=API_BASE_URL=https://<YOUR-RENDER-SERVICE-NAME>.onrender.com/api
+flutter build web --release --dart-define=API_BASE_URL=https://uniflow-jiiw.onrender.com/api
 ```
 
 ### 2.4 Firebase Deployment Command
@@ -102,39 +103,30 @@ Hosting URLs will be available at:
 
 ## 3. Render Backend Deployment (Node.js API)
 
-### 3.1 Why Render
-Render provides production-ready Web Services with native Node.js runtime support, automated TLS certificates, zero-downtime deploys, health check verification, and static outbound IP addresses for regional clusters at **zero extra cost**, completely avoiding the need for an expensive hosting plan upgrade solely for database firewall allowlisting.
+### 3.1 Service Overview
+The Express API is hosted as a Render Web Service (`https://uniflow-jiiw.onrender.com`) connected to the GitHub repository.
 
 ### 3.2 Service Configuration
-1. Log in to [Render Dashboard](https://dashboard.render.com).
-2. Click **New +** and select **Web Service**.
-3. Choose **Build and deploy from a Git repository**.
-4. Select or connect repository: **`Preetham-sai-1/uniflow`**.
-5. Configure the Web Service settings:
-   - **Name:** `uniflow-api` (or preferred name, yielding `https://<name>.onrender.com`)
-   - **Region:** Select the region closest to your MongoDB Atlas cluster (e.g., `Oregon (US West)`, `Ohio (US East)`, `Frankfurt (EU Central)`, or `Singapore (Southeast Asia)`).
-   - **Branch:** `master`
-   - **Root Directory:** `backend/node_api`
-   - **Runtime:** `Node`
-   - **Build Command:** `npm install`
-   - **Start Command:** `npm start` *(or `node src/server.js` — `npm start` resolves to `node src/server.js` in `package.json`)*
-   - **Instance Type:**
-     - **Free:** $0/month (512 MB RAM, 0.1 CPU; spins down after 15 min of inactivity; static outbound IPs still available).
-     - **Starter:** $7/month (512 MB RAM, 0.5 CPU; always-on, zero cold-starts, recommended for live production).
-6. Under **Advanced Settings**:
-   - **Health Check Path:** `/api/health`
-   - **Auto-Deploy:** `Yes` (deploys on push to `master`, or `No` for manual trigger).
+- **Repository:** `Preetham-sai-1/uniflow`
+- **Branch:** `master`
+- **Root Directory:** `backend/node_api`
+- **Runtime:** `Node`
+- **Build Command:** `npm install`
+- **Start Command:** `npm start` *(resolves to `node src/server.js`)*
+- **Health Check Path:** `/api/health`
+- **Auto-Deploy:** `Yes`
+- **Instance Type:** Starter ($7/mo) recommended for live production (always-on, no cold starts).
 
 ### 3.3 Networking & Process Binding
-- In `backend/node_api/src/server.js`, the Express server binds explicitly to `0.0.0.0` and listens on `process.env.PORT` (automatically injected by Render, typically port 10000 or dynamic).
-- The health check endpoint is at `GET /api/health` and returns HTTP 200 with `{ "success": true, "data": { "status": "operational" } }`. Render polls this endpoint during builds and deploys to ensure the application is completely healthy before switching ingress traffic.
-- Seeds do **not** run automatically on startup. The database seeding script (`scripts/seed.js`) is an explicit administrative utility only.
+- Express binds explicitly to `0.0.0.0` and listens on `process.env.PORT` injected by Render.
+- Health check endpoint `GET /api/health` returns HTTP 200 with `{ "success": true, "data": { "status": "operational" } }`. Render polls this before routing traffic.
+- Database seeds do **not** run automatically on startup.
 
 ---
 
 ## 4. Production Environment Variables Audit
 
-All environment variables are validated at backend startup via Zod in `backend/node_api/src/config/env.js`. The server will fail fast if any variable is missing or invalid.
+All environment variables are validated at backend startup via Zod in `backend/node_api/src/config/env.js`. The server fails fast if any variable is missing or invalid.
 
 ### 4.1 Production Environment Inventory
 
@@ -142,7 +134,7 @@ All environment variables are validated at backend startup via Zod in `backend/n
 |---|---|---|---|
 | `PORT` | Auto | *(Injected by Render, e.g. 10000)* | Port assigned dynamically by Render container runner. |
 | `NODE_ENV` | Yes | `production` | Enables production caching, disables verbose morgan logs, activates strict CORS origin filtering. |
-| `MONGO_URI` | Yes | `mongodb+srv://uniflow_prod_svc:<secret>@cluster0.abcde.mongodb.net/uniflow?retryWrites=true&w=majority` | Authenticated MongoDB Atlas SRV connection string with TLS encryption. |
+| `MONGO_URI` | Yes | `mongodb+srv://uniflow_prod_svc:<secret>@cluster0.abcde.mongodb.net/uniflow_prod?retryWrites=true&w=majority` | Authenticated MongoDB Atlas SRV connection string targeting `uniflow_prod` with TLS encryption. |
 | `JWT_SECRET` | Yes | *(64-byte random hex)* | Cryptographic HMAC secret for signing and verifying tokens. Minimum 32 characters. Generate with `openssl rand -hex 64`. |
 | `JWT_EXPIRES_IN`| No | `7d` | Token validity duration. |
 | `FRONTEND_URL` | Yes | `https://uniflow-c3334.web.app` | Canonical production Firebase Hosting origin allowed to make CORS requests. |
@@ -162,24 +154,18 @@ All environment variables are validated at backend startup via Zod in `backend/n
 To adhere to strict zero-trust security principles, **universal database access (`0.0.0.0/0`) is strictly prohibited**. Only Render's designated outbound IP ranges may be whitelisted.
 
 ### 5.1 Retrieving Render Outbound IP Ranges
-Render publishes and displays dedicated outbound IP addresses for all services by region at no extra cost:
-
-1. In the Render Dashboard, open your `uniflow-api` Web Service.
+1. In the Render Dashboard, open your Web Service.
 2. Click **Connect** (located at the top right of the service overview).
 3. Select the **Outbound** tab.
-4. Render displays the exact list of static outbound IPv4 addresses and CIDR blocks for your service's region (for example, regional blocks such as `52.xx.xx.xx/28`, `44.xx.xx.xx/32`, etc.).
+4. Render displays the dedicated static outbound IPv4 addresses and CIDR blocks for your service's region.
 5. Copy these addresses/CIDRs for allowlisting in MongoDB Atlas.
 
 ### 5.2 Atlas IP Whitelisting Procedure (CIDR Entries)
 1. Log in to [MongoDB Atlas Console](https://cloud.mongodb.com/).
 2. Select your Project and navigate to **Security** > **Network Access**.
 3. Under the **IP Access List** tab, click **Add IP Address**.
-4. Enter each Render outbound IP / CIDR block individually:
-   - Paste the IP or CIDR (e.g., `52.203.24.12/32` or regional CIDR `44.229.231.0/24`).
-   - Add a descriptive comment (e.g., `Render Oregon Outbound Node 1`).
-   - Click **Confirm**.
-5. Repeat for all outbound addresses listed in Render's Outbound panel.
-6. Verify that `0.0.0.0/0` (Allow Access from Anywhere) is **NOT** present. If present, delete it immediately.
+4. Enter each Render outbound IP / CIDR block individually with a descriptive comment (e.g. `Render Outbound Node 1`).
+5. Ensure `0.0.0.0/0` is **NOT** present.
 
 ### 5.3 Database User Least-Privilege Role Scoping
 Do not use administrative or unrestricted database credentials in production:
@@ -187,52 +173,123 @@ Do not use administrative or unrestricted database credentials in production:
 2. Click **Add New Database User**.
 3. Authentication Method: **Password** (generate a cryptographically secure password with 32+ characters).
 4. Under **Database User Privileges**:
-   - Select **Built-in Role** or **Specific Privileges**.
-   - Assign the **`readWrite`** role scoped **strictly to the `uniflow` database** (`readWrite@uniflow`).
+   - Assign the **`readWrite`** role scoped **strictly to the `uniflow_prod` database** (`readWrite@uniflow_prod`).
    - Do **NOT** assign `atlasAdmin`, `readWriteAnyDatabase`, or `clusterMonitor`.
 5. Under **Restrictions**: Optionally restrict user connection exclusively to the UniFlow production cluster.
 6. Click **Add User**.
 7. Formulate the production connection string:
    ```
-   mongodb+srv://<username>:<password>@<cluster-host>/uniflow?retryWrites=true&w=majority
+   mongodb+srv://<username>:<password>@<cluster-host>/uniflow_prod?retryWrites=true&w=majority
    ```
-   Provide this value only inside Render's Environment Variables dashboard.
-
-### 5.4 Post-Deployment Connectivity Test
-Once Render initiates the deployment:
-1. Review Render deployment logs for: `MongoDB connected: <cluster-host>`.
-2. Send a request to `GET https://<your-render-app>.onrender.com/api/health`.
-3. Confirm that healthcheck returns HTTP 200 with status `"operational"`.
 
 ---
 
-## 6. Production CORS & Security Controls
+## 6. Production Database Initialization & Administrator Provisioning
 
-### 6.1 Backend CORS Enforcement
+The production database (`uniflow_prod`) is completely separated from the local development database (`uniflow`). Demo student accounts, demo staff accounts, and test requests must **never** be populated in production.
+
+### 6.1 Database State & Initial Verification
+Inspect the target database collections before running initialization:
+- `institutions`: 0 records
+- `departments`: 0 records
+- `services`: 0 records
+- `workflows`: 0 records
+- `users`: 0 records
+- `requests`: 0 records
+- `notifications`: 0 records
+
+### 6.2 Idempotent Production Initialization
+The script `backend/node_api/scripts/init-prod.js` seeds the essential structural foundation:
+
+```bash
+# Execute against the production database:
+cd backend/node_api
+MONGO_URI="<production-atlas-uri>" npm run init:prod
+```
+
+**What it creates:**
+1. **Institution:** `UniFlow Campus` (code: `UFC`, slug: `uniflow-campus`, configurable via `INSTITUTION_NAME`, `INSTITUTION_CODE`, `INSTITUTION_SLUG`).
+2. **Departments:** Administration (`ADMIN`), Computer Science (`CS`), Security (`SEC`), Facilities (`FAC`).
+3. **Services:**
+   - *Bonafide Certificate* (Academic, responsible: ADMIN)
+   - *ID Card Replacement* (Identity, responsible: SEC, with payment step)
+   - *Equipment Booking* (Resources, responsible: FAC)
+4. **Workflows:** Multi-step approval templates linked to each service.
+5. **Index Synchronization:** Automatically synchronizes all unique and compound indexes across all 7 collections.
+
+**Production Safety Guarantees:**
+- **Zero Demo Accounts:** No student, staff, or demo accounts are created.
+- **Zero Mock Requests:** No fake requests, test transactions, or notifications are generated.
+- **Idempotency:** Checks existence by unique slugs/codes before inserting. Existing custom records are preserved without overwrite.
+- **Credential Safety:** Never logs or outputs connection strings or credentials.
+
+### 6.3 Secure Administrator Provisioning
+Public registration (`POST /api/auth/register`) enforces `role: 'student'`. Staff and Administrator accounts cannot register publicly. Provision the initial administrator account using `scripts/create-admin.js`.
+
+#### Method A: Interactive CLI Prompt (Recommended)
+```bash
+cd backend/node_api
+MONGO_URI="<production-atlas-uri>" npm run create-admin
+```
+The script prompts interactively for:
+1. `Administrator Full Name`
+2. `Administrator Email`
+3. `Administrator Password` (masked input with `*`, min 8 characters)
+
+#### Method B: Environment Variables (Automated / Container)
+```bash
+cd backend/node_api
+ADMIN_NAME="Dr. Sarah Johnson" \
+ADMIN_EMAIL="admin@uniflow.edu" \
+ADMIN_PASSWORD="<YourStrongRandomPassword>" \
+MONGO_URI="<production-atlas-uri>" \
+node scripts/create-admin.js
+```
+
+**Provisioning Security Guarantees:**
+- Passwords are encrypted with `bcrypt` (using configured salt rounds). Plaintext is never stored in MongoDB.
+- Passwords are never committed to Git or printed in console logs.
+- Re-run protection: Aborts immediately if an account with that email already exists.
+- The administrator is assigned `role: 'admin'`, associated with the active institution, and assigned to the `ADMIN` department.
+
+### 6.4 Safe Repeat Execution
+Both `init:prod` and `create-admin` are safe to re-execute:
+- Running `init:prod` on an already-initialized database logs `ℹ Existing <record> preserved` and makes zero destructive modifications.
+- Running `create-admin` with an existing administrator email logs an abort message and leaves the account untouched.
+
+### 6.5 Recovery & Rollback
+- If an initialization error occurs before completion, re-running `npm run init:prod` resumes from the missing record.
+- In the event of data corruption, restore the cluster from a MongoDB Atlas point-in-time cloud backup (Cluster > **Backup** > **Restore**).
+
+---
+
+## 7. Production CORS & Security Controls
+
+### 7.1 Backend CORS Enforcement
 In `backend/node_api/src/app.js`:
 - In `NODE_ENV=production`, development origins (`localhost`, `127.0.0.1`, ephemeral development ports) are excluded.
 - The CORS allowlist strictly permits `env.FRONTEND_URL` and `env.FLUTTER_WEB_URL`.
 - Non-browser clients (such as the native Android mobile app or server-to-server health probes) send no `Origin` header and are permitted through JWT verification.
 - Wildcards (`*`) are disallowed.
 
-### 6.2 HTTPS & TLS Requirements
+### 7.2 HTTPS & TLS Requirements
 - All API communication in production must use `https://`.
 - Render terminates TLS at the edge with automated Let's Encrypt certificates and auto-renews them.
 - Firebase Hosting provisions TLS automatically across Google's edge CDN.
 - Security headers are applied by Express via `helmet()` (`HSTS`, `X-Content-Type-Options`, `Content-Security-Policy`).
 
-### 6.3 Android Network Security Configuration
+### 7.3 Android Network Security Configuration
 - The file `android/app/src/main/res/xml/network_security_config.xml` includes `<base-config cleartextTrafficPermitted="false" />`, blocking cleartext HTTP for any domain not explicitly listed.
-- For production releases, all API calls target `https://<YOUR-RENDER-APP>.onrender.com/api`. Android rejects cleartext HTTP attempts automatically.
+- For production releases, all API calls target `https://uniflow-jiiw.onrender.com/api`. Android rejects cleartext HTTP attempts automatically.
 
 ---
 
-## 7. Production Android Release APK Build
+## 8. Production Android Release APK Build
 
 To generate the final production Android APK pointing to the Render API:
 
 ```bash
-flutter build apk --release --dart-define=API_BASE_URL=https://<YOUR-RENDER-APP>.onrender.com/api
+flutter build apk --release --dart-define=API_BASE_URL=https://uniflow-jiiw.onrender.com/api
 ```
 
 - **Output:** `build/app/outputs/flutter-apk/app-release.apk`
@@ -242,45 +299,34 @@ flutter build apk --release --dart-define=API_BASE_URL=https://<YOUR-RENDER-APP>
 
 ---
 
-## 8. Production Smoke-Test Checklist
+## 9. Production Smoke-Test Checklist
 
 After completing deployment of both Firebase Hosting and Render, execute this verification runbook:
 
 1. **API Health Check:**
-   - Execute: `curl -s https://<YOUR-RENDER-APP>.onrender.com/api/health | jq .`
+   - Execute: `curl -s https://uniflow-jiiw.onrender.com/api/health | jq .`
    - Expect: HTTP 200, `"status": "operational"`.
 2. **Web Portal Access:**
-   - Open `https://<FIREBASE-DOMAIN>` in a clean browser session.
+   - Open `https://uniflow-c3334.web.app` in a clean browser session.
    - Verify UniFlow logo and branding render cleanly without CORS errors.
 3. **Login Form Validation:**
    - Verify fields start blank.
    - Verify zero role selectors appear.
-4. **Student Workflow:**
-   - Sign in with student credentials.
-   - Verify automatic redirection to Student Dashboard (`Active Journeys`).
-   - Submit a test Bonafide Request.
-   - Verify request appears in `My Requests` timeline.
-5. **Staff Workflow:**
-   - Sign in with staff credentials in an incognito window.
-   - Verify automatic redirection to `Staff Review Queue`.
-   - Verify submitted student request appears in the review list.
-   - Approve step with comment.
-6. **Administrator Workflow:**
-   - Sign in with admin credentials.
+4. **Primary Administrator Access:**
+   - Sign in with the provisioned administrator credentials.
    - Verify automatic redirection to `Administrative Executive Portal`.
-   - Verify metrics reflect live database counts.
-   - Action final step approval.
-7. **Session Restoration & Logout:**
+   - Verify metrics reflect live database counts (0 active requests initially).
+5. **Session Restoration & Logout:**
    - Refresh the browser while logged in; verify session restores seamlessly without returning to login.
    - Click Sign Out; verify token is deleted and user is returned to the clean login screen.
 
 ---
 
-## 9. Rollback Procedures
+## 10. Rollback Procedures
 
 If an anomaly is detected post-deployment:
 
-### 9.1 Firebase Hosting Rollback
+### 10.1 Firebase Hosting Rollback
 Firebase stores historical deployment versions:
 ```bash
 # List historical releases
@@ -291,20 +337,20 @@ firebase hosting:rollback
 ```
 Rollback takes effect globally within seconds.
 
-### 9.2 Render Backend Rollback
+### 10.2 Render Backend Rollback
 1. Open the Render project dashboard.
 2. Select the `uniflow-api` service > **Events** (or **Deploys**).
 3. Locate the previous verified deployment.
 4. Click the three dots (...) and select **Rollback to this deploy**.
 5. Render immediately restores and routes ingress traffic to the previous deployment image without rebuild delay.
 
-### 9.3 Database Rollback
+### 10.3 Database Rollback
 - MongoDB Atlas provides continuous point-in-time cloud backups on M10+ tiers.
 - In the Atlas Console: Select Cluster > **Backup** > **Restore** > Choose point-in-time snapshot.
 
 ---
 
-## 10. Cost & Billing Summary
+## 11. Cost & Billing Summary
 
 | Service | Tier / Plan | Monthly Cost | Static Outbound IP Included? |
 |---|---|---|---|
