@@ -10,8 +10,8 @@
     "seed": "node scripts/seed.js",
     "init:prod": "node scripts/init-prod.js",
     "create-admin": "node scripts/create-admin.js",
-    "test": "node --env-file=tests/.env.test --test --test-reporter=spec tests/app.test.js tests/health.test.js tests/models.test.js tests/auth.test.js tests/workflow.test.js",
-    "test:verbose": "node --env-file=tests/.env.test --test --test-reporter=tap tests/app.test.js tests/health.test.js tests/models.test.js tests/auth.test.js tests/workflow.test.js"
+    "test": "node --env-file=tests/.env.test --test --test-reporter=spec tests/app.test.js tests/health.test.js tests/models.test.js tests/auth.test.js tests/workflow.test.js tests/db-isolation.test.js",
+    "test:verbose": "node --env-file=tests/.env.test --test --test-reporter=tap tests/app.test.js tests/health.test.js tests/models.test.js tests/auth.test.js tests/workflow.test.js tests/db-isolation.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

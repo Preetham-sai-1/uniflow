@@ -7,6 +7,7 @@
  * MongoDB with role: 'admin' and a bcrypt-hashed password.
  *
  * ⚠️  SECURITY RULES:
+ *  - Enforces strict database isolation: ONLY runs against 'uniflow_prod'.
  *  - Administrator email and password must be supplied explicitly at execution time.
  *  - Passwords are NEVER hardcoded or committed to version control.
  *  - Passwords are NEVER printed in console output or log files.
@@ -31,18 +32,15 @@ import 'dotenv/config';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import readline from 'readline';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { assertProductionDatabase, REQUIRED_PROD_DB_NAME } from './lib/db-guard.js';
 
 import User, { USER_ROLES } from '../src/models/User.js';
 import Institution from '../src/models/Institution.js';
 import Department from '../src/models/Department.js';
 
-const MONGO_URI = process.env.MONGO_URI;
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS ?? '10', 10);
-
-if (!MONGO_URI) {
-  console.error('❌  MONGO_URI is not set. Please provide MONGO_URI in your environment.');
-  process.exit(1);
-}
 
 // ─── Interactive prompt helper ────────────────────────────────────────────────
 function prompt(question, isPassword = false) {
@@ -90,15 +88,29 @@ function prompt(question, isPassword = false) {
   });
 }
 
-// ─── Main Provisioning Logic ──────────────────────────────────────────────────
-async function createAdmin() {
+/**
+ * Provisions an administrator account in production with database isolation enforcement.
+ * @param {object} [options]
+ * @param {string} [options.mongoUri]
+ * @param {string} [options.name]
+ * @param {string} [options.email]
+ * @param {string} [options.password]
+ * @returns {Promise<object>}
+ */
+export async function createAdmin(options = {}) {
+  const MONGO_URI = options.mongoUri || process.env.MONGO_URI;
+
+  if (!MONGO_URI) {
+    throw new Error('MONGO_URI is not set. Please provide MONGO_URI in your environment.');
+  }
+
   console.log('\n👤  UniFlow — Administrator Account Provisioning\n');
   console.log('━'.repeat(55));
 
-  // Retrieve inputs from environment or CLI flags, falling back to prompt
-  let name = process.env.ADMIN_NAME;
-  let email = process.env.ADMIN_EMAIL;
-  let password = process.env.ADMIN_PASSWORD;
+  // Retrieve inputs from options, environment, or CLI flags, falling back to prompt
+  let name = options.name || process.env.ADMIN_NAME;
+  let email = options.email || process.env.ADMIN_EMAIL;
+  let password = options.password || process.env.ADMIN_PASSWORD;
 
   // Check command line arguments (--name=..., --email=..., --password=...)
   for (const arg of process.argv.slice(2)) {
@@ -125,34 +137,40 @@ async function createAdmin() {
 
   // Validate inputs
   if (!name || name.length < 2) {
-    console.error('❌  Invalid name: Administrator name must be at least 2 characters.');
-    process.exit(1);
+    throw new Error('Invalid name: Administrator name must be at least 2 characters.');
   }
 
   const emailRegex = /^\S+@\S+\.\S+$/;
   if (!email || !emailRegex.test(email)) {
-    console.error('❌  Invalid email: Please supply a valid email address.');
-    process.exit(1);
+    throw new Error('Invalid email: Please supply a valid email address.');
   }
 
   if (!password || password.length < 8) {
-    console.error('❌  Weak password: Administrator password must be at least 8 characters long.');
-    process.exit(1);
+    throw new Error('Weak password: Administrator password must be at least 8 characters long.');
   }
 
   // ── Connect ─────────────────────────────────────────────────────────────────
   await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 10000 });
-  const dbName = mongoose.connection.db.databaseName;
-  console.log(`\n✅  Connected to MongoDB database: [ ${dbName} ]\n`);
+  const dbName = mongoose.connection.db?.databaseName;
+
+  // ── Mandatory Database Isolation Guard ─────────────────────────────────────
+  // Enforce that administrator provisioning ONLY occurs in 'uniflow_prod'
+  try {
+    assertProductionDatabase(mongoose.connection, REQUIRED_PROD_DB_NAME);
+  } catch (guardErr) {
+    await mongoose.disconnect();
+    throw guardErr;
+  }
+
+  console.log(`\n✅  Connected to MongoDB database: [ ${dbName} ] (Verified Production Database)\n`);
 
   // ── Resolve Institution ─────────────────────────────────────────────────────
   const institution = await Institution.findOne({ isActive: true });
   if (!institution) {
-    console.error('❌  No active institution found in the target database.');
-    console.error('    Please run the production database initialization first:');
-    console.error('    npm run init:prod\n');
     await mongoose.disconnect();
-    process.exit(1);
+    throw new Error(
+      'No active institution found in the target database. Run `npm run init:prod` first.'
+    );
   }
 
   // ── Resolve Department (Optional but assigned to Administration if present) ─
@@ -161,12 +179,10 @@ async function createAdmin() {
   // ── Check if user with email already exists ─────────────────────────────────
   const existingUser = await User.findOne({ email });
   if (existingUser) {
-    console.error(`❌  A user account with email "${email}" already exists.`);
-    console.error(`    Account Role: ${existingUser.role}`);
-    console.error(`    User ID     : ${existingUser._id}`);
-    console.error('    Aborting provisioning to prevent unintended overwrite.');
     await mongoose.disconnect();
-    process.exit(1);
+    throw new Error(
+      `A user account with email "${email}" already exists. Aborting to prevent overwrite.`
+    );
   }
 
   // ── Hash password with bcrypt ───────────────────────────────────────────────
@@ -194,11 +210,32 @@ async function createAdmin() {
   console.log(`  Status      : Active`);
   console.log('\n  ⚠️  Password has been securely hashed with bcrypt. Never share administrator credentials.\n');
 
-  await mongoose.disconnect();
+  return {
+    adminId: admin._id,
+    email: admin.email,
+    institution: institution.name,
+  };
 }
 
-createAdmin().catch(async (err) => {
-  console.error('\n❌  Administrator provisioning failed:', err.message);
-  await mongoose.disconnect();
-  process.exit(1);
-});
+// ─── Direct CLI Execution Handler ─────────────────────────────────────────────
+const isDirectExecution =
+  process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+
+if (isDirectExecution) {
+  createAdmin()
+    .then(() => mongoose.disconnect())
+    .catch(async (err) => {
+      if (err.code === 'DATABASE_ISOLATION_VIOLATION') {
+        console.error('\n🛑  DATABASE ISOLATION ERROR:');
+        console.error(`    ${err.message}`);
+        console.error(`    Actual connected database: [ ${err.actualDb ?? 'unknown'} ]`);
+        console.error('    Aborting immediately. Zero user accounts created or modified.\n');
+        console.error('    To provision the administrator in production, explicitly provide the production URI:');
+        console.error('    MONGO_URI="mongodb+srv://.../uniflow_prod?..." npm run create-admin\n');
+      } else {
+        console.error('\n❌  Administrator provisioning failed:', err.message);
+      }
+      await mongoose.disconnect().catch(() => {});
+      process.exit(1);
+    });
+}

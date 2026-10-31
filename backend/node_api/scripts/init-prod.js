@@ -7,6 +7,7 @@
  * configuration, departments, service catalogue entries, and workflow definitions.
  *
  * ⚠️  PRODUCTION SAFE:
+ *  - Enforces strict database isolation: ONLY runs against 'uniflow_prod'.
  *  - Idempotent: checks for existing records before inserting.
  *  - NEVER overwrites or alters existing production records.
  *  - NEVER creates demo student, demo staff, or dummy accounts.
@@ -18,11 +19,14 @@
  *   npm run init:prod
  *
  * Requirements:
- *   - MONGO_URI must point to the production database (e.g. uniflow_prod)
+ *   - MONGO_URI must point specifically to 'uniflow_prod'
  */
 
 import 'dotenv/config';
 import mongoose from 'mongoose';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { assertProductionDatabase, REQUIRED_PROD_DB_NAME } from './lib/db-guard.js';
 
 // ─── Models ───────────────────────────────────────────────────────────────────
 import Institution from '../src/models/Institution.js';
@@ -33,25 +37,40 @@ import User from '../src/models/User.js';
 import Request from '../src/models/Request.js';
 import Notification from '../src/models/Notification.js';
 
-const MONGO_URI = process.env.MONGO_URI;
-
-if (!MONGO_URI) {
-  console.error('❌  MONGO_URI is not set. Please provide MONGO_URI in your environment.');
-  process.exit(1);
-}
-
 function log(icon, message) {
   console.log(`  ${icon}  ${message}`);
 }
 
-async function initProd() {
+/**
+ * Executes production database initialization with database isolation.
+ * @param {string} [uriOverride] - Optional MONGO_URI override.
+ * @returns {Promise<object>} Summary of initialized items.
+ */
+export async function initProd(uriOverride = null) {
+  const MONGO_URI = uriOverride || process.env.MONGO_URI;
+
+  if (!MONGO_URI) {
+    throw new Error('MONGO_URI is not set. Please provide MONGO_URI in your environment.');
+  }
+
   console.log('\n🏛️  UniFlow — Production Database Initialization\n');
   console.log('━'.repeat(55));
 
   // ── 0. Connect ─────────────────────────────────────────────────────────────
   await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 10000 });
-  const dbName = mongoose.connection.db.databaseName;
-  console.log(`\n✅  Connected to MongoDB database: [ ${dbName} ]\n`);
+  const dbName = mongoose.connection.db?.databaseName;
+
+  // ── Mandatory Database Isolation Guard ─────────────────────────────────────
+  // Enforce that this script NEVER runs against the development database ('uniflow')
+  // or any other non-production database.
+  try {
+    assertProductionDatabase(mongoose.connection, REQUIRED_PROD_DB_NAME);
+  } catch (guardErr) {
+    await mongoose.disconnect();
+    throw guardErr;
+  }
+
+  console.log(`\n✅  Connected to MongoDB database: [ ${dbName} ] (Verified Production Database)\n`);
 
   // ── 1. Institution ─────────────────────────────────────────────────────────
   console.log('📍  1. Institution Configuration');
@@ -392,18 +411,41 @@ async function initProd() {
   console.log('\n' + '━'.repeat(55));
   console.log('✅  Production database initialization complete.\n');
   console.log('   Verification checklist:');
+  console.log('   - Database: Verified strictly targeting [ uniflow_prod ].');
   console.log('   - 0 demo student accounts created.');
   console.log('   - 0 demo staff accounts created.');
   console.log('   - 0 demo admin accounts created.');
   console.log('   - 0 sample requests or transactions created.');
   console.log('   - Essential institution, departments, services, and workflows are active.');
   console.log('   - Next step: Run `npm run create-admin` to provision the primary administrator.\n');
+
+  return {
+    database: dbName,
+    institution: institution.name,
+    departments: Object.keys(departments),
+    services: [bonafideService.name, idCardService.name, equipmentService.name],
+  };
 }
 
-initProd()
-  .then(() => mongoose.disconnect())
-  .catch((err) => {
-    console.error('\n❌  Initialization failed:', err.message);
-    mongoose.disconnect();
-    process.exit(1);
-  });
+// ─── Direct CLI Execution Handler ─────────────────────────────────────────────
+const isDirectExecution =
+  process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+
+if (isDirectExecution) {
+  initProd()
+    .then(() => mongoose.disconnect())
+    .catch(async (err) => {
+      if (err.code === 'DATABASE_ISOLATION_VIOLATION') {
+        console.error('\n🛑  DATABASE ISOLATION ERROR:');
+        console.error(`    ${err.message}`);
+        console.error(`    Actual connected database: [ ${err.actualDb ?? 'unknown'} ]`);
+        console.error('    Aborting immediately. Zero database writes or schema modifications performed.\n');
+        console.error('    To initialize the production database, explicitly provide the production URI:');
+        console.error('    MONGO_URI="mongodb+srv://.../uniflow_prod?..." npm run init:prod\n');
+      } else {
+        console.error('\n❌  Initialization failed:', err.message);
+      }
+      await mongoose.disconnect().catch(() => {});
+      process.exit(1);
+    });
+}
