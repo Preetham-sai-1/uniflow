@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/api/api_exceptions.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/state/app_state.dart';
 import '../../models/journey_request.dart';
@@ -24,6 +25,7 @@ class _ReviewDecisionDialogState extends State<ReviewDecisionDialog> {
   final _commentController = TextEditingController();
   bool _isRejectMode = false;
   String? _errorMessage;
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -31,7 +33,7 @@ class _ReviewDecisionDialogState extends State<ReviewDecisionDialog> {
     super.dispose();
   }
 
-  void _handleDecision(bool approve) {
+  Future<void> _handleDecision(bool approve) async {
     final comment = _commentController.text.trim();
 
     if (!approve && comment.isEmpty) {
@@ -43,33 +45,80 @@ class _ReviewDecisionDialogState extends State<ReviewDecisionDialog> {
       return;
     }
 
-    if (widget.isAdmin) {
-      widget.appState.adminReviewRequest(
-        requestId: widget.request.id,
-        approve: approve,
-        comment: comment,
-      );
-    } else {
-      widget.appState.staffReviewRequest(
-        requestId: widget.request.id,
-        approve: approve,
-        comment: comment,
-      );
+    if (_isSubmitting) return;
+
+    if (!widget.appState.isAuthenticated) {
+      // Local fallback for offline/unauthenticated tests
+      if (widget.isAdmin) {
+        widget.appState.adminReviewRequest(
+          requestId: widget.request.id,
+          approve: approve,
+          comment: comment,
+        );
+      } else {
+        widget.appState.staffReviewRequest(
+          requestId: widget.request.id,
+          approve: approve,
+          comment: comment,
+        );
+      }
+      Navigator.pop(context);
+      return;
     }
 
-    Navigator.pop(context);
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor:
-            approve ? AppColors.statusApproved : AppColors.statusRejected,
-        content: Text(
-          approve
-              ? 'Request ${widget.request.id} approved successfully!'
-              : 'Request ${widget.request.id} rejected with recorded note.',
-        ),
-      ),
-    );
+    try {
+      final targetId = widget.request.backendId ?? widget.request.id;
+      final stepIdx = widget.request.currentStepIndex;
+
+      JourneyRequest updated;
+      if (approve) {
+        updated = await widget.appState.submitStepApproval(
+          requestId: targetId,
+          stepIndex: stepIdx,
+          comment: comment,
+        );
+      } else {
+        updated = await widget.appState.submitStepRejection(
+          requestId: targetId,
+          stepIndex: stepIdx,
+          comment: comment,
+        );
+      }
+
+      if (mounted) {
+        Navigator.pop(context, updated);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor:
+                approve ? AppColors.statusApproved : AppColors.statusRejected,
+            content: Text(
+              approve
+                  ? 'Request ${widget.request.effectiveId} approved successfully!'
+                  : 'Request ${widget.request.effectiveId} rejected with recorded note.',
+            ),
+          ),
+        );
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+          _errorMessage = e.message;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+          _errorMessage = 'Action failed: ${e.toString()}';
+        });
+      }
+    }
   }
 
   @override
@@ -213,7 +262,6 @@ class _ReviewDecisionDialogState extends State<ReviewDecisionDialog> {
                   hintText: _isRejectMode
                       ? 'State why this request cannot be approved (e.g. invalid document, unpaid fee, slot occupied)...'
                       : 'Optional endorsement note for student records...',
-                  errorText: _errorMessage,
                 ),
                 onChanged: (_) {
                   if (_errorMessage != null) {
@@ -221,6 +269,37 @@ class _ReviewDecisionDialogState extends State<ReviewDecisionDialog> {
                   }
                 },
               ),
+
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.statusRejectedBg,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: AppColors.statusRejected.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline_rounded,
+                          size: 16, color: AppColors.statusRejected),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.statusRejected,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 24),
 
@@ -234,9 +313,21 @@ class _ReviewDecisionDialogState extends State<ReviewDecisionDialog> {
                       side: const BorderSide(color: AppColors.statusRejected),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    label: const Text('Reject Request'),
-                    onPressed: () => _handleDecision(false),
+                    icon: _isSubmitting && _isRejectMode
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.statusRejected,
+                            ),
+                          )
+                        : const Icon(Icons.close_rounded, size: 18),
+                    label: Text(_isSubmitting && _isRejectMode
+                        ? 'Rejecting...'
+                        : 'Reject Request'),
+                    onPressed:
+                        _isSubmitting ? null : () => _handleDecision(false),
                   );
 
                   final approveButton = ElevatedButton.icon(
@@ -245,10 +336,23 @@ class _ReviewDecisionDialogState extends State<ReviewDecisionDialog> {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    icon: const Icon(Icons.check_rounded, size: 18),
-                    label: Text(
-                        widget.isAdmin ? 'Approve & Issue' : 'Approve Step'),
-                    onPressed: () => _handleDecision(true),
+                    icon: _isSubmitting && !_isRejectMode
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check_rounded, size: 18),
+                    label: Text(_isSubmitting && !_isRejectMode
+                        ? 'Approving...'
+                        : (widget.isAdmin
+                            ? 'Approve & Issue'
+                            : 'Approve Step')),
+                    onPressed:
+                        _isSubmitting ? null : () => _handleDecision(true),
                   );
 
                   if (isNarrow) {

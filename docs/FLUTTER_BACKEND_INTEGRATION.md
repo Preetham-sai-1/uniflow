@@ -617,6 +617,47 @@ The foundational client networking, secure session persistence, role mapping, an
    - React production build: Zero errors (`vite build` in 1.73s).
    - Flutter analyzer: Zero issues (`flutter analyze --no-pub`).
 
+### 10.4 Phase 4 Implemented: Staff Review Queue & Request Actioning [COMPLETED]
+
+1. **Staff Workflow Service (`lib/core/services/staff_workflow_service.dart`, `lib/core/api/api_endpoints.dart`)**:
+   - Added endpoint helper methods:
+     - `ApiEndpoints.approveStep(id, stepIndex)` -> `/staff/requests/:id/steps/:stepIndex/approve`
+     - `ApiEndpoints.rejectStep(id, stepIndex)` -> `/staff/requests/:id/steps/:stepIndex/reject`
+   - `fetchStaffQueue({int page = 1, int limit = 50})`: Queries `GET /api/staff/queue` with Bearer authentication, deserializing queue items into typed `JourneyRequest` instances with `waitingHours` and `stepName`.
+   - `approveStep({required String requestId, required int stepIndex, String comment = ''})`: Calls `PATCH /api/staff/requests/:id/steps/:stepIndex/approve`, advancing the workflow step and returning the updated request.
+   - `rejectStep({required String requestId, required int stepIndex, required String comment})`: Validates non-empty comment and calls `PATCH /api/staff/requests/:id/steps/:stepIndex/reject`, terminating the request into `REJECTED` status and recording the mandatory reason in audit history.
+
+2. **Domain Model Extensions (`lib/models/journey_request.dart`, `lib/models/service_item.dart`)**:
+   - Added `waitingHours` and `stepName` attributes to `JourneyRequest`.
+   - `JourneyRequest.fromStaffQueueJson(Map<String, dynamic> json)`: Maps backend review queue payload (`requestId`, `requestNumber`, `serviceName`, `studentName`, `studentIdNumber`, `stepIndex`, `stepName`, `waitingHours`, `status`, `submittedAt`) into typed `JourneyRequest` model.
+   - Extended `ServiceType.fromSlug` with flexible category and service name matching (`id card`, `equipment`, etc.).
+
+3. **Application State Integration (`lib/core/state/app_state.dart`)**:
+   - Integrated `StaffWorkflowService` into `AppState` with automatic `ApiClient` sharing.
+   - Added reactive state fields: `_staffQueue`, `_isLoadingStaffQueue`, `_hasLoadedStaffQueue`, `_staffQueueError`, `_isActioningStep`, `_actionError`.
+   - `loadStaffQueue({bool forceRefresh = false})`: Caches queue in memory, prevents duplicate in-flight requests, and reconciles records with global requests list.
+   - `submitStepApproval(...)` and `submitStepRejection(...)`: Submit decisions to the backend, synchronize the updated request across all state collections, and remove actioned items from `staffQueue`.
+   - Preserved synchronous fallback `staffReviewRequest(...)` for unit test backward compatibility.
+
+4. **Staff Review Queue UI (`lib/views/staff/staff_queue_view.dart`)**:
+   - Automatically loads backend queue on view mounting when authenticated as staff/admin.
+   - Full state handling: Loading spinner (`Loading staff review queue...`), empty queue state, error state with "Retry Connection" button, and strict 403 Access Denied banner when accessed by student role.
+   - Interactive search bar filtering by student name, roll number, or request number.
+   - Interactive service filter chips (`All`, `Bonafide`, `ID Card`, `Equipment`).
+   - Cards display service icon, title, tracking ticket, student details, waiting hours chip (`Waiting: Xh`), current step badge, and status badge.
+   - "View Journey" action routes to `RequestDetailView`, while "Review & Decide" opens `ReviewDecisionDialog`.
+
+5. **Decision Dialog & Detail Actioning (`lib/views/staff/review_dialog.dart`, `lib/views/student/request_detail_view.dart`)**:
+   - `ReviewDecisionDialog`: Enforces mandatory non-empty comment for rejection with inline validation, prevents duplicate submissions with loading indicators, and calls real backend approval/rejection endpoints.
+   - `RequestDetailView`: Surfaces an interactive staff action banner (`Staff Review Action Pending`) when viewed by staff/admin on actionable requests, allowing direct review and decision from the detailed journey audit trail.
+
+6. **Automated Verification**:
+   - Flutter tests: 62/62 tests passing across 6 suites (`test/staff_workflow_integration_test.dart`, `test/request_history_and_tracking_test.dart`, `test/student_services_test.dart`, `test/auth_integration_test.dart`, `test/widget_test.dart`, `test/responsiveness_test.dart`).
+   - Backend tests: 84/84 tests passing (`tests/*.test.js`).
+   - React frontend tests: 27/27 tests passing (`frontend/react_app/src/test/*.jsx`).
+   - React production build: Zero errors (`vite build` in 2.23s).
+   - Flutter analyzer: Zero issues (`flutter analyze --no-pub`).
+
 ---
 
 ## 11. Recommended Phased Implementation Order

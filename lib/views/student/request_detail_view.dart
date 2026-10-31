@@ -6,6 +6,8 @@ import '../../models/journey_request.dart';
 import '../../widgets/journey_timeline.dart';
 import '../../widgets/responsive_container.dart';
 import '../../widgets/status_badge.dart';
+import '../../models/role.dart';
+import '../staff/review_dialog.dart';
 
 class RequestDetailView extends StatefulWidget {
   final String requestId;
@@ -385,6 +387,82 @@ class _RequestDetailViewState extends State<RequestDetailView> {
                                 : 'Pay ₹${request.feeAmount > 0 ? request.feeAmount.toStringAsFixed(0) : "200"} Now (Simulated)'),
                             onPressed: _isPaying ? null : _handlePayment,
                           ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                // Staff Review Action Banner (if pending staff review)
+                if ((widget.appState.currentRole == UserRole.staff ||
+                        widget.appState.currentRole == UserRole.admin) &&
+                    !request.status.isTerminal &&
+                    request.status != JourneyStatus.paymentRequired) ...[
+                  const SizedBox(height: 20),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                          color: AppColors.primaryBlue.withOpacity(0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.rate_review_rounded,
+                                color: AppColors.primaryBlue, size: 22),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'Staff Review Action Pending',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                  color: AppColors.primaryNavy,
+                                ),
+                              ),
+                            ),
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.rate_review_rounded,
+                                  size: 16),
+                              label: const Text('Review & Decide'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primaryBlue,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 10),
+                                textStyle: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w700),
+                              ),
+                              onPressed: () async {
+                                final result =
+                                    await showDialog<JourneyRequest?>(
+                                  context: context,
+                                  builder: (_) => ReviewDecisionDialog(
+                                    request: request,
+                                    appState: widget.appState,
+                                    isAdmin: widget.appState.currentRole ==
+                                        UserRole.admin,
+                                  ),
+                                );
+                                if (result != null && mounted) {
+                                  setState(() {
+                                    _request = result;
+                                  });
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'This application is awaiting departmental decision. You can evaluate submitted documents and record an approval or rejection.',
+                          style: TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary),
                         ),
                       ],
                     ),

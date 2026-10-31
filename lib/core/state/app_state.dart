@@ -4,11 +4,13 @@ import '../../models/role.dart';
 import '../../models/service_item.dart';
 import '../api/api_exceptions.dart';
 import '../auth/auth_service.dart';
+import '../services/staff_workflow_service.dart';
 import '../services/student_workflow_service.dart';
 
 class AppState extends ChangeNotifier {
   final AuthService authService;
   final StudentWorkflowService studentWorkflowService;
+  final StaffWorkflowService staffWorkflowService;
 
   UserRole _currentRole = UserRole.student;
   UserProfile _currentUser = UserProfile.studentUser;
@@ -39,17 +41,37 @@ class AppState extends ChangeNotifier {
   bool _isProcessingPayment = false;
   String? _paymentError;
 
+  // Staff Review Queue State
+  List<JourneyRequest> _staffQueue = [];
+  bool _isLoadingStaffQueue = false;
+  bool _hasLoadedStaffQueue = false;
+  String? _staffQueueError;
+
+  // Step Actioning State
+  bool _isActioningStep = false;
+  String? _actionError;
+
   AppState({
     AuthService? authService,
     StudentWorkflowService? studentWorkflowService,
+    StaffWorkflowService? staffWorkflowService,
     bool? initialAuthenticated,
   })  : authService = authService ?? AuthService(),
         studentWorkflowService = studentWorkflowService ??
             (authService != null
                 ? StudentWorkflowService(apiClient: authService.apiClient)
                 : StudentWorkflowService()),
+        staffWorkflowService = staffWorkflowService ??
+            (authService != null
+                ? StaffWorkflowService(apiClient: authService.apiClient)
+                : (studentWorkflowService != null
+                    ? StaffWorkflowService(
+                        apiClient: studentWorkflowService.apiClient)
+                    : StaffWorkflowService())),
         _isAuthenticated = initialAuthenticated ??
-            (studentWorkflowService != null || authService != null) {
+            (studentWorkflowService != null ||
+                authService != null ||
+                staffWorkflowService != null) {
     _initSeedData();
   }
 
@@ -83,10 +105,18 @@ class AppState extends ChangeNotifier {
   bool get isProcessingPayment => _isProcessingPayment;
   String? get paymentError => _paymentError;
 
-  List<JourneyRequest> get staffQueue => _requests
-      .where((r) =>
-          !r.status.isTerminal && r.status != JourneyStatus.adminApproval)
-      .toList();
+  List<JourneyRequest> get staffQueue => _hasLoadedStaffQueue
+      ? List.unmodifiable(_staffQueue)
+      : _requests
+          .where((r) =>
+              !r.status.isTerminal && r.status != JourneyStatus.adminApproval)
+          .toList();
+
+  bool get isLoadingStaffQueue => _isLoadingStaffQueue;
+  bool get hasLoadedStaffQueue => _hasLoadedStaffQueue;
+  String? get staffQueueError => _staffQueueError;
+  bool get isActioningStep => _isActioningStep;
+  String? get actionError => _actionError;
 
   List<JourneyRequest> get adminQueue =>
       _requests.where((r) => r.status == JourneyStatus.adminApproval).toList();
@@ -164,6 +194,10 @@ class AppState extends ChangeNotifier {
     _hasLoadedRequests = false;
     _requestsError = null;
     _paymentError = null;
+    _staffQueue = [];
+    _hasLoadedStaffQueue = false;
+    _staffQueueError = null;
+    _actionError = null;
     notifyListeners();
   }
 
@@ -258,6 +292,10 @@ class AppState extends ChangeNotifier {
   Future<JourneyRequest> submitStudentPayment(String id) async {
     _isProcessingPayment = true;
     _paymentError = null;
+    _staffQueue = [];
+    _hasLoadedStaffQueue = false;
+    _staffQueueError = null;
+    _actionError = null;
     notifyListeners();
 
     try {
@@ -293,6 +331,158 @@ class AppState extends ChangeNotifier {
     } finally {
       _isProcessingPayment = false;
       notifyListeners();
+    }
+  }
+
+  /// Fetches pending requests from GET /api/staff/queue.
+  Future<void> loadStaffQueue({bool forceRefresh = false}) async {
+    if (_isLoadingStaffQueue) return;
+    if (!forceRefresh && _hasLoadedStaffQueue) return;
+
+    _isLoadingStaffQueue = true;
+    _staffQueueError = null;
+    notifyListeners();
+
+    try {
+      final fetched = await staffWorkflowService.fetchStaffQueue();
+      _staffQueue = fetched;
+      _hasLoadedStaffQueue = true;
+      _staffQueueError = null;
+
+      // Reconcile with _requests
+      for (final item in fetched) {
+        final idx = _requests.indexWhere((r) =>
+            r.id == item.id ||
+            (r.backendId != null && r.backendId == item.backendId));
+        if (idx != -1) {
+          _requests[idx] = item;
+        } else {
+          _requests.insert(0, item);
+        }
+      }
+    } on ApiException catch (e) {
+      _staffQueueError = e.message;
+    } catch (e) {
+      _staffQueueError = 'Failed to load staff queue. Please check connection.';
+    } finally {
+      _isLoadingStaffQueue = false;
+      notifyListeners();
+    }
+  }
+
+  /// Approves a pending workflow step at [stepIndex] for request [requestId].
+  /// Uses authoritative backend response to update local state and queue.
+  Future<JourneyRequest> submitStepApproval({
+    required String requestId,
+    required int stepIndex,
+    String comment = '',
+  }) async {
+    if (_isActioningStep) {
+      throw const ApiException(
+        statusCode: 400,
+        code: 'ACTION_IN_PROGRESS',
+        message: 'A review action is already being processed.',
+      );
+    }
+
+    _isActioningStep = true;
+    _actionError = null;
+    notifyListeners();
+
+    try {
+      final updated = await staffWorkflowService.approveStep(
+        requestId: requestId,
+        stepIndex: stepIndex,
+        comment: comment,
+      );
+
+      _syncActionedRequest(updated);
+      _actionError = null;
+      return updated;
+    } on ApiException catch (e) {
+      _actionError = e.message;
+      rethrow;
+    } catch (e) {
+      _actionError = 'Failed to approve step. Please check connection.';
+      throw ApiException(
+        statusCode: 500,
+        code: 'NETWORK_ERROR',
+        message: _actionError!,
+      );
+    } finally {
+      _isActioningStep = false;
+      notifyListeners();
+    }
+  }
+
+  /// Rejects a pending workflow step at [stepIndex] for request [requestId].
+  /// Enforces non-empty comment and updates local state upon server confirmation.
+  Future<JourneyRequest> submitStepRejection({
+    required String requestId,
+    required int stepIndex,
+    required String comment,
+  }) async {
+    if (_isActioningStep) {
+      throw const ApiException(
+        statusCode: 400,
+        code: 'ACTION_IN_PROGRESS',
+        message: 'A review action is already being processed.',
+      );
+    }
+
+    _isActioningStep = true;
+    _actionError = null;
+    notifyListeners();
+
+    try {
+      final updated = await staffWorkflowService.rejectStep(
+        requestId: requestId,
+        stepIndex: stepIndex,
+        comment: comment,
+      );
+
+      _syncActionedRequest(updated);
+      _actionError = null;
+      return updated;
+    } on ApiException catch (e) {
+      _actionError = e.message;
+      rethrow;
+    } catch (e) {
+      _actionError = 'Failed to reject step. Please check connection.';
+      throw ApiException(
+        statusCode: 500,
+        code: 'NETWORK_ERROR',
+        message: _actionError!,
+      );
+    } finally {
+      _isActioningStep = false;
+      notifyListeners();
+    }
+  }
+
+  /// Synchronizes an actioned request across _staffQueue, _studentRequests, and _requests.
+  void _syncActionedRequest(JourneyRequest updated) {
+    // In staff queue, if step is no longer pending staff review or request is terminal, remove it
+    _staffQueue.removeWhere((r) =>
+        r.id == updated.id ||
+        (r.backendId != null && r.backendId == updated.backendId));
+
+    // Update in _requests
+    final idx = _requests.indexWhere((r) =>
+        r.id == updated.id ||
+        (r.backendId != null && r.backendId == updated.backendId));
+    if (idx != -1) {
+      _requests[idx] = updated;
+    } else {
+      _requests.insert(0, updated);
+    }
+
+    // Update in _studentRequests if present
+    final sIdx = _studentRequests.indexWhere((r) =>
+        r.id == updated.id ||
+        (r.backendId != null && r.backendId == updated.backendId));
+    if (sIdx != -1) {
+      _studentRequests[sIdx] = updated;
     }
   }
 

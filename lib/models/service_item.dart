@@ -86,6 +86,7 @@ enum ServiceType {
     if (slug == null) return ServiceType.bonafide;
     final lower = slug.toLowerCase();
     if (lower.contains('id-card') ||
+        lower.contains('id card') ||
         lower.contains('badge') ||
         lower.contains('identity')) {
       return ServiceType.idCard;

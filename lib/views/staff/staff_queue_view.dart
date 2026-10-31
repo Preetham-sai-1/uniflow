@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/state/app_state.dart';
 import '../../models/journey_request.dart';
+import '../../models/role.dart';
 import '../../widgets/metric_card.dart';
 import '../../widgets/responsive_container.dart';
 import '../../widgets/status_badge.dart';
@@ -34,6 +35,18 @@ class _StaffQueueViewState extends State<StaffQueueView> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          widget.appState.isAuthenticated &&
+          widget.appState.currentRole != UserRole.student) {
+        widget.appState.loadStaffQueue();
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
@@ -44,8 +57,109 @@ class _StaffQueueViewState extends State<StaffQueueView> {
     return AnimatedBuilder(
       animation: widget.appState,
       builder: (context, _) {
+        if (widget.appState.currentRole == UserRole.student) {
+          return const ResponsiveContainer(
+            title: 'Staff Review Queue',
+            subtitle: 'Restricted area for faculty and staff officers.',
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(40),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.gpp_bad_rounded,
+                        size: 56, color: AppColors.statusRejected),
+                    SizedBox(height: 16),
+                    Text(
+                      'Access Denied',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primaryNavy,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'You do not have permissions to access the Staff Review Queue. This screen requires the "staff" or "admin" role.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
         final allRequests = widget.appState.requests;
         final pendingQueue = widget.appState.staffQueue;
+
+        if (widget.appState.isLoadingStaffQueue && pendingQueue.isEmpty) {
+          return const ResponsiveContainer(
+            title: 'Staff Review Queue',
+            subtitle:
+                'Requests awaiting verification from academic and security departments.',
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(48),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text(
+                      'Loading staff review queue...',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        if (widget.appState.staffQueueError != null && pendingQueue.isEmpty) {
+          return ResponsiveContainer(
+            title: 'Staff Review Queue',
+            subtitle:
+                'Requests awaiting verification from academic and security departments.',
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.cloud_off_rounded,
+                        size: 56, color: AppColors.statusRejected),
+                    const SizedBox(height: 16),
+                    Text(
+                      widget.appState.staffQueueError!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryNavy,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Retry Connection'),
+                      onPressed: () =>
+                          widget.appState.loadStaffQueue(forceRefresh: true),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
 
         final sourceList = widget.showHistoryOnly ? allRequests : pendingQueue;
 
@@ -276,7 +390,7 @@ class _StaffQueueViewState extends State<StaffQueueView> {
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
-                                          '(${req.id})',
+                                          '(${req.requestNumber.isNotEmpty ? req.requestNumber : req.id})',
                                           style: const TextStyle(
                                               color: AppColors.textMuted,
                                               fontSize: 12,
@@ -293,6 +407,56 @@ class _StaffQueueViewState extends State<StaffQueueView> {
                                           color: AppColors.textSecondary,
                                           fontSize: 12),
                                     ),
+                                    if (req.stepName != null ||
+                                        req.waitingHours != null) ...[
+                                      const SizedBox(height: 6),
+                                      Wrap(
+                                        spacing: 8,
+                                        children: [
+                                          if (req.stepName != null)
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFF1F5F9),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                'Step: ${req.stepName}',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color:
+                                                      AppColors.textSecondary,
+                                                ),
+                                              ),
+                                            ),
+                                          if (req.waitingHours != null)
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFEF3C7),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                'Waiting: ${req.waitingHours}h',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Color(0xFF92400E),
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -347,7 +511,8 @@ class _StaffQueueViewState extends State<StaffQueueView> {
                                     context,
                                     MaterialPageRoute(
                                       builder: (_) => RequestDetailView(
-                                        requestId: req.id,
+                                        requestId: req.backendId ?? req.id,
+                                        initialRequest: req,
                                         appState: widget.appState,
                                       ),
                                     ),

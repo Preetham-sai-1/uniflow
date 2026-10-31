@@ -199,6 +199,8 @@ class JourneyRequest {
   final String? adminComment;
   final String? rejectionReason;
   final int currentStepIndex;
+  final int? waitingHours;
+  final String? stepName;
 
   const JourneyRequest({
     required this.id,
@@ -222,6 +224,8 @@ class JourneyRequest {
     this.adminComment,
     this.rejectionReason,
     this.currentStepIndex = 0,
+    this.waitingHours,
+    this.stepName,
   })  : requestNumber = requestNumber ?? id,
         serviceName = serviceName ?? '',
         backendStatus = backendStatus ?? '';
@@ -253,6 +257,8 @@ class JourneyRequest {
     String? adminComment,
     String? rejectionReason,
     int? currentStepIndex,
+    int? waitingHours,
+    String? stepName,
   }) {
     return JourneyRequest(
       id: id ?? this.id,
@@ -276,6 +282,8 @@ class JourneyRequest {
       adminComment: adminComment ?? this.adminComment,
       rejectionReason: rejectionReason ?? this.rejectionReason,
       currentStepIndex: currentStepIndex ?? this.currentStepIndex,
+      waitingHours: waitingHours ?? this.waitingHours,
+      stepName: stepName ?? this.stepName,
     );
   }
 
@@ -443,6 +451,66 @@ class JourneyRequest {
       isFeePaid: isFeePaid,
       rejectionReason: rejectionReason,
       currentStepIndex: currentStepIdx,
+    );
+  }
+
+  factory JourneyRequest.fromStaffQueueJson(Map<String, dynamic> json) {
+    final requestId = json['requestId'] as String? ??
+        json['_id'] as String? ??
+        json['id'] as String? ??
+        '';
+    final requestNumber = json['requestNumber'] as String? ?? requestId;
+    final serviceName = json['serviceName'] as String? ?? 'Campus Service';
+    final serviceCategory = json['serviceCategory'] as String?;
+    final serviceType =
+        ServiceType.fromSlug(serviceName) != ServiceType.bonafide
+            ? ServiceType.fromSlug(serviceName)
+            : ServiceType.fromSlug(serviceCategory ?? serviceName);
+
+    final studentName = json['studentName'] as String? ?? 'Student';
+    final studentEmail = json['studentEmail'] as String? ?? '';
+    final studentRoll = json['studentIdNumber'] as String? ?? '';
+
+    final stepIndex = json['stepIndex'] as int? ?? 0;
+    final stepName = json['stepName'] as String? ?? 'Review';
+    final assignedRole = json['assignedRole'] as String? ?? 'staff';
+    final statusStr = json['status'] as String? ?? 'SUBMITTED';
+    final status = JourneyStatus.fromBackendString(statusStr);
+
+    final submittedAt = json['submittedAt'] != null
+        ? DateTime.tryParse(json['submittedAt'].toString()) ?? DateTime.now()
+        : DateTime.now();
+    final waitingHours = json['waitingHours'] as int? ?? 0;
+
+    return JourneyRequest(
+      id: requestNumber.isNotEmpty ? requestNumber : requestId,
+      backendId: requestId,
+      requestNumber: requestNumber,
+      serviceType: serviceType,
+      serviceName: serviceName,
+      studentId: studentEmail,
+      studentName: studentName,
+      studentRoll: studentRoll,
+      department: 'Assigned Department',
+      status: status,
+      backendStatus: statusStr,
+      submittedAt: submittedAt,
+      updatedAt: submittedAt,
+      formData: {},
+      timeline: [
+        TimelineStep(
+          title: stepName,
+          description: 'Awaiting ${assignedRole.toUpperCase()} action',
+          actorRole: assignedRole,
+          timestamp: submittedAt,
+          isCurrent: true,
+          stepIndex: stepIndex,
+          status: statusStr,
+        ),
+      ],
+      currentStepIndex: stepIndex,
+      waitingHours: waitingHours,
+      stepName: stepName,
     );
   }
 }

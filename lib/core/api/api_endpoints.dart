@@ -22,4 +22,12 @@ class ApiEndpoints {
 
   /// Helper to build path for PATCH /api/requests/:id/payment
   static String requestPayment(String id) => '/requests/$id/payment';
+
+  /// Helper to build path for PATCH /api/staff/requests/:id/steps/:stepIndex/approve
+  static String approveStep(String id, int stepIndex) =>
+      '/staff/requests/$id/steps/$stepIndex/approve';
+
+  /// Helper to build path for PATCH /api/staff/requests/:id/steps/:stepIndex/reject
+  static String rejectStep(String id, int stepIndex) =>
+      '/staff/requests/$id/steps/$stepIndex/reject';
 }
