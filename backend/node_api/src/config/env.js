@@ -27,6 +27,9 @@ const envSchema = z.object({
   // CORS — the React dev server origin
   FRONTEND_URL: z.string().url().default('http://localhost:5173'),
 
+  // CORS — the Flutter web dev origin
+  FLUTTER_WEB_URL: z.string().url().default('http://localhost:7357'),
+
   // Bcrypt cost — integer; tests use 1 for speed
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(1).max(31).default(10),
 });

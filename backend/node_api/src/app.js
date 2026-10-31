@@ -28,10 +28,25 @@ const app = express();
 // ── 1. Security headers ───────────────────────────────────────────────────────
 app.use(helmet());
 
-// ── 2. CORS — only allow the configured frontend origin ───────────────────────
+// ── 2. CORS — allowlist configured frontend & Flutter Web origins ─────────────
+const allowedOrigins = [
+  env.FRONTEND_URL,
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  env.FLUTTER_WEB_URL,
+  'http://localhost:7357',
+  'http://127.0.0.1:7357',
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: env.FRONTEND_URL,
+    origin: (origin, callback) => {
+      // Allow non-browser requests (no origin header, e.g. mobile apps, curl)
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     methods: ['GET', 'POST', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: false, // No cookies in MVP; JWT is in the Authorization header

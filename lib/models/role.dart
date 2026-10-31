@@ -48,6 +48,32 @@ enum UserRole {
         return Icons.admin_panel_settings_rounded;
     }
   }
+
+  /// Maps string role from backend ('student', 'staff', 'admin') to [UserRole].
+  static UserRole fromString(String? role) {
+    switch (role?.toLowerCase().trim()) {
+      case 'staff':
+        return UserRole.staff;
+      case 'admin':
+      case 'administrator':
+        return UserRole.admin;
+      case 'student':
+      default:
+        return UserRole.student;
+    }
+  }
+
+  /// Converts [UserRole] to backend string format.
+  String toBackendString() {
+    switch (this) {
+      case UserRole.student:
+        return 'student';
+      case UserRole.staff:
+        return 'staff';
+      case UserRole.admin:
+        return 'admin';
+    }
+  }
 }
 
 class UserProfile {
@@ -66,6 +92,41 @@ class UserProfile {
     required this.identifier,
     required this.role,
   });
+
+  /// Factory constructor to parse backend user JSON from /api/auth/login or /api/auth/me.
+  factory UserProfile.fromJson(Map<String, dynamic> json) {
+    // Department can be populated object { _id, name, code } or an ID string or null
+    String deptName = '';
+    final dept = json['department'];
+    if (dept is Map<String, dynamic>) {
+      deptName = dept['name']?.toString() ?? '';
+    } else if (dept is String) {
+      deptName = dept;
+    }
+
+    final rollOrEmpId =
+        json['studentId']?.toString() ?? json['identifier']?.toString() ?? '';
+
+    return UserProfile(
+      id: (json['id'] ?? json['_id'] ?? '').toString(),
+      name: (json['name'] ?? '').toString(),
+      email: (json['email'] ?? '').toString(),
+      department: deptName,
+      identifier: rollOrEmpId,
+      role: UserRole.fromString(json['role']?.toString()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'email': email,
+      'department': department,
+      'identifier': identifier,
+      'role': role.toBackendString(),
+    };
+  }
 
   static const studentUser = UserProfile(
     id: 'u-std-101',

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/api/api_exceptions.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/state/app_state.dart';
 import '../../models/role.dart';
@@ -20,10 +21,13 @@ class LoginView extends StatefulWidget {
 
 class _LoginViewState extends State<LoginView> {
   UserRole _selectedRole = UserRole.student;
-  final _emailController =
-      TextEditingController(text: 'alex.rivera@campus.edu');
-  final _passwordController = TextEditingController(text: '••••••••');
+  final _emailController = TextEditingController(text: 'student@uniflow.edu');
+  final _passwordController = TextEditingController(text: 'Demo@1234');
   bool _obscurePassword = true;
+  bool _isLoading = false;
+  String? _errorMessage;
+  String? _emailError;
+  String? _passwordError;
 
   @override
   void initState() {
@@ -42,23 +46,108 @@ class _LoginViewState extends State<LoginView> {
   void _updateDefaultCredentials(UserRole role) {
     setState(() {
       _selectedRole = role;
+      _errorMessage = null;
+      _emailError = null;
+      _passwordError = null;
       switch (role) {
         case UserRole.student:
-          _emailController.text = UserProfile.studentUser.email;
+          _emailController.text = 'student@uniflow.edu';
+          _passwordController.text = 'Demo@1234';
           break;
         case UserRole.staff:
-          _emailController.text = UserProfile.staffUser.email;
+          _emailController.text = 'staff@uniflow.edu';
+          _passwordController.text = 'Demo@1234';
           break;
         case UserRole.admin:
-          _emailController.text = UserProfile.adminUser.email;
+          _emailController.text = 'admin@uniflow.edu';
+          _passwordController.text = 'Demo@1234';
           break;
       }
     });
   }
 
-  void _handleSignIn() {
-    widget.appState.setRole(_selectedRole);
-    widget.onLoginSuccess();
+  bool _validateInputs() {
+    setState(() {
+      _emailError = null;
+      _passwordError = null;
+      _errorMessage = null;
+    });
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    bool isValid = true;
+
+    if (email.isEmpty) {
+      setState(() => _emailError = 'Email is required.');
+      isValid = false;
+    } else if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
+      setState(() => _emailError = 'Please provide a valid email address.');
+      isValid = false;
+    }
+
+    if (password.isEmpty) {
+      setState(() => _passwordError = 'Password is required.');
+      isValid = false;
+    }
+
+    return isValid;
+  }
+
+  Future<void> _handleSignIn() async {
+    if (_isLoading) return;
+
+    if (!_validateInputs()) {
+      setState(() {
+        _errorMessage = 'Please provide valid credentials.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    try {
+      await widget.appState.login(email, password);
+      if (mounted) {
+        widget.onLoginSuccess();
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.message;
+        });
+      }
+    } on NetworkException catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.message;
+        });
+      }
+    } on ApiTimeoutException catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.message;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage =
+              'Authentication failed. Please verify credentials and server availability.';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -138,15 +227,27 @@ class _LoginViewState extends State<LoginView> {
                             Border.all(color: Colors.white.withOpacity(0.15)),
                       ),
                       child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          _HeroMetric(
-                              label: 'REQUEST', sub: 'Student Initiated'),
+                          Expanded(
+                            child: _HeroMetric(
+                              label: '100% ONLINE',
+                              sub: 'Zero physical paperwork',
+                            ),
+                          ),
                           _HeroDivider(),
-                          _HeroMetric(
-                              label: 'REVIEW', sub: 'Staff Verification'),
+                          Expanded(
+                            child: _HeroMetric(
+                              label: '3 STAGES',
+                              sub: 'Transparent live tracking',
+                            ),
+                          ),
                           _HeroDivider(),
-                          _HeroMetric(label: 'TRACK', sub: 'Live Audit Trail'),
+                          Expanded(
+                            child: _HeroMetric(
+                              label: '3 ROLES',
+                              sub: 'Students, Staff & Admin',
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -155,48 +256,48 @@ class _LoginViewState extends State<LoginView> {
               ),
             ),
 
-          // Right Form Panel
+          // Right Authentication Form Area
           Expanded(
             flex: 6,
             child: Center(
               child: SingleChildScrollView(
-                padding: EdgeInsets.symmetric(
-                  horizontal: screenWidth < 400 ? 20 : 32,
-                  vertical: 28,
-                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 40, vertical: 36),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 440),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (!isWide) ...[
-                        const BrandLogo(fontSize: 24, showBadge: true),
-                        const SizedBox(height: 36),
+                        const BrandLogo(fontSize: 22, showBadge: true),
+                        const SizedBox(height: 32),
                       ],
+
                       const Text(
                         'Welcome Back',
                         style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w800,
                           color: AppColors.primaryNavy,
-                          letterSpacing: -0.5,
                         ),
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Select your campus role and sign in to proceed.',
+                        'Sign in with your institutional credentials to access student services, staff queues, and administrative tools.',
                         style: TextStyle(
-                          color: AppColors.textSecondary,
                           fontSize: 14,
+                          color: AppColors.textSecondary,
+                          height: 1.5,
                         ),
                       ),
+
                       const SizedBox(height: 28),
 
-                      // Role Switcher Cards
+                      // Demo Credential Quick-Fill Role Selector
                       const Text(
                         'CONTINUE AS',
                         style: TextStyle(
-                          color: AppColors.textSecondary,
+                          color: AppColors.textMuted,
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 1.1,
@@ -211,7 +312,9 @@ class _LoginViewState extends State<LoginView> {
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 4),
                               child: InkWell(
-                                onTap: () => _updateDefaultCredentials(role),
+                                onTap: _isLoading
+                                    ? null
+                                    : () => _updateDefaultCredentials(role),
                                 borderRadius: BorderRadius.circular(12),
                                 child: Container(
                                   padding:
@@ -262,6 +365,44 @@ class _LoginViewState extends State<LoginView> {
                       ),
 
                       const SizedBox(height: 24),
+
+                      // Error Banner
+                      if (_errorMessage != null) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFFECACA)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(top: 2),
+                                child: Icon(Icons.error_outline_rounded,
+                                    size: 18, color: Color(0xFFDC2626)),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _errorMessage!,
+                                  style: const TextStyle(
+                                    color: Color(0xFFDC2626),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
                       const Text(
                         'Campus Email',
                         style: TextStyle(
@@ -273,9 +414,13 @@ class _LoginViewState extends State<LoginView> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: _emailController,
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.email_outlined, size: 20),
-                          hintText: 'user@campus.edu',
+                        keyboardType: TextInputType.emailAddress,
+                        enabled: !_isLoading,
+                        decoration: InputDecoration(
+                          prefixIcon:
+                              const Icon(Icons.email_outlined, size: 20),
+                          hintText: 'user@uniflow.edu',
+                          errorText: _emailError,
                         ),
                       ),
 
@@ -292,10 +437,12 @@ class _LoginViewState extends State<LoginView> {
                       TextField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
+                        enabled: !_isLoading,
                         decoration: InputDecoration(
                           prefixIcon:
                               const Icon(Icons.lock_outline_rounded, size: 20),
                           hintText: 'Enter password',
+                          errorText: _passwordError,
                           suffixIcon: IconButton(
                             icon: Icon(
                               _obscurePassword
@@ -311,6 +458,7 @@ class _LoginViewState extends State<LoginView> {
                             },
                           ),
                         ),
+                        onSubmitted: (_) => _handleSignIn(),
                       ),
 
                       const SizedBox(height: 28),
@@ -318,15 +466,29 @@ class _LoginViewState extends State<LoginView> {
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
-                          onPressed: _handleSignIn,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('Enter as ${_selectedRole.displayName}'),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.arrow_forward_rounded, size: 18),
-                            ],
-                          ),
+                          onPressed: _isLoading ? null : _handleSignIn,
+                          child: _isLoading
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2.5,
+                                  ),
+                                )
+                              : FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                          'Enter as ${_selectedRole.displayName}'),
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.arrow_forward_rounded,
+                                          size: 18),
+                                    ],
+                                  ),
+                                ),
                         ),
                       ),
 

@@ -38,14 +38,28 @@ uniflow/
    flutter run
    ```
 
-### UI Features Included
-- Responsive login with role selection (Student, Staff, Admin)
-- Named routes and role-specific navigation
-- Student home, campus services catalogue, request form, request list, and journey timeline
-- Staff request overview, review dialog, and history
-- Admin analytics and metrics dashboard
-- Profile view and sign out
-- Material 3 styling, responsive NavigationBar/NavigationRail, and animated page transitions
+### Configuration & Base URL
+The API base URL automatically resolves based on platform:
+- **Flutter Web**: `http://localhost:3001/api`
+- **Android Emulator**: `http://10.0.2.2:3001/api`
+- **Windows Desktop / Physical Devices**: `http://localhost:3001/api` (or specify LAN IP)
+
+To override the API base URL without modifying source code:
+```bash
+flutter run --dart-define=API_BASE_URL=http://your-server-ip:3001/api
+```
+
+### UI & Authentication Features Included
+- **Backend Authentication (Phase 1)**: Integrated with `POST /api/auth/login` and `GET /api/auth/me`.
+- **Secure Token Storage**: Encrypted persistent JWT session storage across app restarts.
+- **Server-Authoritative Roles**: Authentic permissions derived from JWT payload (`student`, `staff`, `admin`).
+- Quick-fill demo account buttons (`student@uniflow.edu`, `staff@uniflow.edu`, `admin@uniflow.edu` / `Demo@1234`).
+- Named routes and role-specific navigation for Student, Staff, and Administrator.
+- Student home, campus services catalogue, request form, request list, and journey timeline.
+- Staff request overview, review dialog, and history.
+- Admin analytics and metrics dashboard.
+- Profile view and sign out (evicts stored JWT).
+- Material 3 styling, responsive NavigationBar/NavigationRail, and animated transitions.
 
 ### Tests
 ```bash

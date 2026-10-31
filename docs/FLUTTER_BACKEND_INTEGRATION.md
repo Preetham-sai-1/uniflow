@@ -491,7 +491,47 @@ When preparing backend integration, `app.js` CORS should support an array of all
 
 ---
 
-## 10. Recommended Phased Implementation Order
+## 10. Implementation Progress & Phase Deliverables
+
+### Phase 1: Flutter Backend Authentication Integration [COMPLETED]
+
+The foundational client networking, secure session persistence, role mapping, and backend authentication integration are fully implemented:
+
+1. **Centralized Networking Layer (`lib/core/api/`)**:
+   - `ApiConfig`: Platform-aware base URL resolution (`http://10.0.2.2:3001/api` for Android emulator, `http://localhost:3001/api` for Web & Desktop), configurable via `--dart-define=API_BASE_URL=...` and runtime overrides.
+   - `ApiEndpoints`: Authoritative endpoint paths conforming to `API_CONTRACT.md`.
+   - `ApiException`, `NetworkException`, `ApiTimeoutException`: Standardized exception envelopes extracting backend error codes (`INVALID_TOKEN`, `VALIDATION_ERROR`, `FORBIDDEN`, etc.).
+   - `ApiResponse`: Standard `{ success, data, error, pagination }` response envelope parser.
+   - `ApiClient`: Reusable HTTP client injecting `Authorization: Bearer <token>`, handling JSON encoding/decoding, and managing connection timeouts.
+
+2. **Secure Token Storage & Persistence (`lib/core/auth/token_storage.dart`)**:
+   - `TokenStorage`: Abstract storage interface.
+   - `SecureTokenStorage`: Concrete implementation using `FlutterSecureStorage` with `encryptedSharedPreferences` on Android and web secure storage on Web, plus fallback handling for desktop/test runners.
+   - `InMemoryTokenStorage`: In-memory storage adapter for unit test isolation.
+
+3. **Authentication Service & Role Mapping (`lib/core/auth/auth_service.dart`, `lib/models/role.dart`)**:
+   - `AuthService`: Direct consumer of `POST /api/auth/login` and `GET /api/auth/me`.
+   - `UserProfile.fromJson`: Maps real backend user documents into typed `UserProfile` and `UserRole` (`student`, `staff`, `admin`).
+   - Server-authoritative role resolution (client cannot escalate privileges).
+
+4. **Session State Architecture (`lib/core/state/app_state.dart`, `lib/main.dart`)**:
+   - Seamless startup session restoration (`appState.initializeSession()`).
+   - Automatic routing: unauthenticated users navigate to `LoginView`; authenticated users land on their role dashboard via `AppShell`.
+   - Logout clears JWT storage and returns safely to `LoginView`.
+   - `LoginView`: Input validation, inline field errors, server error banner, submission debounce, and quick-fill demo buttons (`student@uniflow.edu`, `staff@uniflow.edu`, `admin@uniflow.edu`).
+
+5. **Backend CORS Support (`backend/node_api/src/app.js`, `env.js`)**:
+   - Explicit allowlist supporting React development (`http://localhost:5173`, `http://127.0.0.1:5173`) and Flutter Web development (`http://localhost:7357`, `http://127.0.0.1:7357`, and `FLUTTER_WEB_URL`).
+   - Non-browser native mobile requests pass through without CORS restrictions.
+
+6. **Automated Verification**:
+   - Flutter tests: 28/28 tests passing (`test/auth_integration_test.dart`, `test/widget_test.dart`, `test/responsiveness_test.dart`).
+   - Backend tests: 84/84 tests passing (`tests/*.test.js`).
+   - React frontend tests: 27/27 tests passing (`frontend/react_app/src/test/*.jsx`).
+
+---
+
+## 11. Recommended Phased Implementation Order
 
 To ensure zero regressions to the existing React web application and preserve all 84 passing backend tests, the integration must proceed in 5 sequential stages:
 

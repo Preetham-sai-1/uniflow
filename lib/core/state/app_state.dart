@@ -2,23 +2,39 @@ import 'package:flutter/material.dart';
 import '../../models/journey_request.dart';
 import '../../models/role.dart';
 import '../../models/service_item.dart';
+import '../auth/auth_service.dart';
 
 class AppState extends ChangeNotifier {
+  final AuthService authService;
+
   UserRole _currentRole = UserRole.student;
   UserProfile _currentUser = UserProfile.studentUser;
+  bool _isAuthenticated = false;
+  bool _isLoadingSession = false;
+  String? _sessionError;
+
   final List<JourneyRequest> _requests = [];
 
-  AppState() {
+  AppState({
+    AuthService? authService,
+    bool? initialAuthenticated,
+  })  : authService = authService ?? AuthService(),
+        _isAuthenticated = initialAuthenticated ?? false {
     _initSeedData();
   }
 
   UserRole get currentRole => _currentRole;
   UserProfile get currentUser => _currentUser;
+  bool get isAuthenticated => _isAuthenticated;
+  bool get isLoadingSession => _isLoadingSession;
+  String? get sessionError => _sessionError;
   List<JourneyRequest> get requests => List.unmodifiable(_requests);
 
   // Filtered requests by current student or queue
   List<JourneyRequest> get studentRequests => _requests
-      .where((r) => r.studentId == UserProfile.studentUser.id)
+      .where((r) =>
+          r.studentId == _currentUser.id ||
+          r.studentId == UserProfile.studentUser.id)
       .toList();
 
   List<JourneyRequest> get staffQueue => _requests
@@ -42,6 +58,58 @@ class AppState extends ChangeNotifier {
         _currentUser = UserProfile.adminUser;
         break;
     }
+    notifyListeners();
+  }
+
+  /// Sets an authenticated session with the server-verified user profile.
+  void setAuthenticatedUser(UserProfile user) {
+    _currentUser = user;
+    _currentRole = user.role;
+    _isAuthenticated = true;
+    _sessionError = null;
+    notifyListeners();
+  }
+
+  /// Restores session on startup using persistent token storage.
+  Future<bool> initializeSession() async {
+    _isLoadingSession = true;
+    _sessionError = null;
+    notifyListeners();
+
+    try {
+      final user = await authService.restoreSession();
+      if (user != null) {
+        _currentUser = user;
+        _currentRole = user.role;
+        _isAuthenticated = true;
+        return true;
+      } else {
+        _isAuthenticated = false;
+        return false;
+      }
+    } catch (e) {
+      _sessionError = e.toString();
+      _isAuthenticated = false;
+      return false;
+    } finally {
+      _isLoadingSession = false;
+      notifyListeners();
+    }
+  }
+
+  /// Authenticate against real backend login endpoint.
+  Future<void> login(String email, String password) async {
+    final result = await authService.login(email: email, password: password);
+    setAuthenticatedUser(result.user);
+  }
+
+  /// Log out and clear token session.
+  Future<void> logout() async {
+    await authService.logout();
+    _isAuthenticated = false;
+    _currentUser = UserProfile.studentUser;
+    _currentRole = UserRole.student;
+    _sessionError = null;
     notifyListeners();
   }
 
