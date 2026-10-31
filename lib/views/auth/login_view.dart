@@ -3,6 +3,7 @@ import '../../core/api/api_exceptions.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/state/app_state.dart';
 import '../../widgets/brand_logo.dart';
+import 'register_view.dart';
 
 class LoginView extends StatefulWidget {
   final AppState appState;
@@ -398,6 +399,41 @@ class _LoginViewState extends State<LoginView> {
                                         size: 18),
                                   ],
                                 ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Center(
+                        child: TextButton(
+                          key: const Key('login_create_account_button'),
+                          onPressed: _isLoading
+                              ? null
+                              : () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => RegisterView(
+                                        appState: widget.appState,
+                                      ),
+                                    ),
+                                  );
+                                },
+                          child: const Text.rich(
+                            TextSpan(
+                              text: "Don't have an account? ",
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 13,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: 'Create Account',
+                                  style: TextStyle(
+                                    color: AppColors.primaryNavy,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ],

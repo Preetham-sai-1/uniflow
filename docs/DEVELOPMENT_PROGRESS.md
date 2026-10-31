@@ -308,6 +308,22 @@ All 27 frontend tests passed. Production bundle builds cleanly in 3.5s (`npm run
 
 ---
 
+## User Registration and Account Approval System
+
+| Deliverable | Status | Notes |
+|---|:---:|---|
+| Student public registration (`POST /api/auth/register`) | ✅ | Role forced to `student`, status set to `PENDING`, no JWT issued, duplicate email/studentId rejected (409) |
+| Login approval status guard (`POST /api/auth/login`) | ✅ | Blocks `PENDING` accounts (`ACCOUNT_PENDING_APPROVAL` - 403) and `REJECTED` accounts (`ACCOUNT_REJECTED` - 403) |
+| Admin pending users list (`GET /api/admin/pending-users`) | ✅ | RBAC enforced (admin only), lists pending registrations with department & institution details |
+| Admin account approval (`PATCH /api/admin/users/:id/approve`) | ✅ | RBAC enforced (admin only), transitions status to `APPROVED`, enables immediate login |
+| Admin account rejection (`PATCH /api/admin/users/:id/reject`) | ✅ | RBAC enforced (admin only), transitions status to `REJECTED` with reason |
+| Flutter student registration view (`RegisterView`) | ✅ | Form validation, password visibility, department dropdown, pending approval confirmation card |
+| Flutter login view registration entry (`LoginView`) | ✅ | "Create Account" link, handling of `ACCOUNT_PENDING_APPROVAL` and `ACCOUNT_REJECTED` alerts |
+| Flutter admin user approvals dashboard (`AdminDashboardView`) | ✅ | Pending review list with student ID/dept, direct Approve button and Reject dialog with reason |
+| Automated test coverage | ✅ | 110/110 backend tests, 27/27 React tests, 90/90 Flutter tests passing |
+
+---
+
 ## Known Blockers
 
 | Blocker | Impact | Resolution |

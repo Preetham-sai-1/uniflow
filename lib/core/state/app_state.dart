@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/admin_stats.dart';
 import '../../models/journey_request.dart';
+import '../../models/pending_user.dart';
 import '../../models/role.dart';
 import '../../models/service_item.dart';
 import '../api/api_exceptions.dart';
@@ -67,6 +68,12 @@ class AppState extends ChangeNotifier {
   int _adminTotalRequests = 0;
   int _adminTotalPages = 1;
   int _adminCurrentPage = 1;
+
+  // Pending Student User Approvals State
+  List<PendingUser> _pendingUsers = [];
+  bool _isLoadingPendingUsers = false;
+  bool _hasLoadedPendingUsers = false;
+  String? _pendingUsersError;
 
   AppState({
     AuthService? authService,
@@ -165,6 +172,11 @@ class AppState extends ChangeNotifier {
   int get adminTotalPages => _adminTotalPages;
   int get adminCurrentPage => _adminCurrentPage;
 
+  List<PendingUser> get pendingUsers => List.unmodifiable(_pendingUsers);
+  bool get isLoadingPendingUsers => _isLoadingPendingUsers;
+  bool get hasLoadedPendingUsers => _hasLoadedPendingUsers;
+  String? get pendingUsersError => _pendingUsersError;
+
   void setRole(UserRole role) {
     _currentRole = role;
     switch (role) {
@@ -251,6 +263,9 @@ class AppState extends ChangeNotifier {
     _adminTotalRequests = 0;
     _adminTotalPages = 1;
     _adminCurrentPage = 1;
+    _pendingUsers = [];
+    _hasLoadedPendingUsers = false;
+    _pendingUsersError = null;
     notifyListeners();
   }
 
@@ -622,6 +637,70 @@ class AppState extends ChangeNotifier {
     } finally {
       _isLoadingAdminRequests = false;
       notifyListeners();
+    }
+  }
+
+  /// Fetches pending student registrations awaiting administrator review.
+  /// Calls GET /api/admin/pending-users.
+  Future<void> loadPendingUsers({bool forceRefresh = false}) async {
+    if (_isLoadingPendingUsers) return;
+    if (!forceRefresh && _hasLoadedPendingUsers) return;
+
+    _isLoadingPendingUsers = true;
+    _pendingUsersError = null;
+    notifyListeners();
+
+    try {
+      final list = await adminWorkflowService.fetchPendingUsers();
+      _pendingUsers = list;
+      _hasLoadedPendingUsers = true;
+      _pendingUsersError = null;
+    } on ApiException catch (e) {
+      _pendingUsersError = e.message;
+    } catch (e) {
+      _pendingUsersError =
+          'Failed to load pending users list. Please check connection.';
+    } finally {
+      _isLoadingPendingUsers = false;
+      notifyListeners();
+    }
+  }
+
+  /// Approves a pending student registration.
+  /// Calls PATCH /api/admin/users/:id/approve and removes user from pending list.
+  Future<void> approvePendingUser(String userId) async {
+    _pendingUsersError = null;
+    try {
+      await adminWorkflowService.approveUser(userId);
+      _pendingUsers.removeWhere((u) => u.id == userId);
+      notifyListeners();
+    } on ApiException catch (e) {
+      _pendingUsersError = e.message;
+      notifyListeners();
+      rethrow;
+    } catch (e) {
+      _pendingUsersError = 'Failed to approve user. Please try again.';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Rejects a pending student registration with an optional reason.
+  /// Calls PATCH /api/admin/users/:id/reject and removes user from pending list.
+  Future<void> rejectPendingUser(String userId, {String? reason}) async {
+    _pendingUsersError = null;
+    try {
+      await adminWorkflowService.rejectUser(userId, reason: reason);
+      _pendingUsers.removeWhere((u) => u.id == userId);
+      notifyListeners();
+    } on ApiException catch (e) {
+      _pendingUsersError = e.message;
+      notifyListeners();
+      rethrow;
+    } catch (e) {
+      _pendingUsersError = 'Failed to reject user. Please try again.';
+      notifyListeners();
+      rethrow;
     }
   }
 

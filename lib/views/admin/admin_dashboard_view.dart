@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/state/app_state.dart';
 import '../../models/journey_request.dart';
+import '../../models/pending_user.dart';
 import '../../models/role.dart';
 import '../../widgets/metric_card.dart';
 import '../../widgets/responsive_container.dart';
@@ -39,6 +40,46 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
         widget.appState.currentRole == UserRole.admin) {
       widget.appState.loadAdminStats(forceRefresh: forceRefresh);
       widget.appState.loadAdminRequests(forceRefresh: forceRefresh);
+      widget.appState.loadPendingUsers(forceRefresh: forceRefresh);
+    }
+  }
+
+  Future<void> _approveUser(PendingUser user) async {
+    try {
+      await widget.appState.approvePendingUser(user.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${user.name} has been approved and can now log in.'),
+            backgroundColor: AppColors.statusApproved,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to approve user: $e'),
+            backgroundColor: AppColors.statusRejected,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showRejectUserDialog(PendingUser user) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (_) => _RejectUserDialog(user: user, appState: widget.appState),
+    );
+
+    if (result == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Registration for ${user.name} has been rejected.'),
+          backgroundColor: AppColors.statusRejected,
+        ),
+      );
     }
   }
 
@@ -207,6 +248,11 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
                   );
                 },
               ),
+
+              const SizedBox(height: 32),
+
+              // Student Account Approvals Section
+              _buildUserApprovalsSection(appState),
 
               const SizedBox(height: 32),
 
@@ -504,6 +550,368 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildUserApprovalsSection(AppState appState) {
+    final pendingUsers = appState.pendingUsers;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 8,
+          children: [
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              children: [
+                const Text(
+                  'Student Account Approvals',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryNavy,
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: pendingUsers.isNotEmpty
+                        ? AppColors.statusPending.withOpacity(0.15)
+                        : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${pendingUsers.length}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: pendingUsers.isNotEmpty
+                          ? AppColors.statusPending
+                          : AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              tooltip: 'Refresh pending accounts',
+              onPressed: () =>
+                  appState.loadPendingUsers(forceRefresh: true),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (appState.isLoadingPendingUsers && !appState.hasLoadedPendingUsers)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: CircularProgressIndicator(),
+            ),
+          )
+        else if (pendingUsers.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.borderSubtle),
+            ),
+            child: const Center(
+              child: Column(
+                children: [
+                  Icon(Icons.person_outline_rounded,
+                      size: 40, color: AppColors.statusApproved),
+                  SizedBox(height: 8),
+                  Text(
+                    'No pending student registrations',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryNavy,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'All student registration requests have been approved or reviewed.',
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: pendingUsers.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final user = pendingUsers[index];
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.borderSubtle),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor:
+                              AppColors.primaryNavy.withOpacity(0.1),
+                          child: const Icon(Icons.school_rounded,
+                              color: AppColors.primaryNavy, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                user.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15,
+                                  color: AppColors.primaryNavy,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                user.email,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.amber.shade200),
+                          ),
+                          child: const Text(
+                            'PENDING REVIEW',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.amber,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 24),
+                    Wrap(
+                      spacing: 20,
+                      runSpacing: 8,
+                      children: [
+                        if (user.studentId != null)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.badge_outlined,
+                                  size: 15, color: AppColors.textSecondary),
+                              const SizedBox(width: 6),
+                              Text(
+                                'ID: ${user.studentId}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primaryNavy,
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (user.departmentName != null)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.account_balance_outlined,
+                                  size: 15, color: AppColors.textSecondary),
+                              const SizedBox(width: 6),
+                              Text(
+                                user.departmentName!,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton.icon(
+                          key: Key('reject_user_${user.id}'),
+                          icon: const Icon(Icons.cancel_outlined,
+                              size: 16, color: AppColors.statusRejected),
+                          label: const Text(
+                            'Reject',
+                            style: TextStyle(color: AppColors.statusRejected),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(
+                                color: AppColors.statusRejected),
+                          ),
+                          onPressed: () => _showRejectUserDialog(user),
+                        ),
+                        const SizedBox(width: 10),
+                        ElevatedButton.icon(
+                          key: Key('approve_user_${user.id}'),
+                          icon: const Icon(Icons.check_circle_outline_rounded,
+                              size: 16),
+                          label: const Text('Approve Account'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.statusApproved,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () => _approveUser(user),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _RejectUserDialog extends StatefulWidget {
+  final PendingUser user;
+  final AppState appState;
+
+  const _RejectUserDialog({required this.user, required this.appState});
+
+  @override
+  State<_RejectUserDialog> createState() => _RejectUserDialogState();
+}
+
+class _RejectUserDialogState extends State<_RejectUserDialog> {
+  late final TextEditingController _reasonController;
+  String? _localError;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _reasonController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleReject() async {
+    final reason = _reasonController.text.trim();
+    if (reason.isEmpty) {
+      setState(() => _localError = 'A rejection reason is required.');
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _localError = null;
+    });
+
+    try {
+      await widget.appState.rejectPendingUser(widget.user.id, reason: reason);
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _localError = e.toString();
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Reject Registration: ${widget.user.name}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Please provide a reason for rejecting this student registration (e.g. invalid student ID or institutional email).',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          if (_localError != null) ...[
+            Text(
+              _localError!,
+              style: const TextStyle(
+                color: AppColors.statusRejected,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          TextField(
+            key: const Key('reject_reason_input'),
+            controller: _reasonController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              hintText: 'Enter rejection reason...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          key: const Key('confirm_reject_user_button'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.statusRejected,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: _isSubmitting ? null : _handleReject,
+          child: _isSubmitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                )
+              : const Text('Reject Registration'),
+        ),
+      ],
     );
   }
 }

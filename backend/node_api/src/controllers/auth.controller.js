@@ -13,11 +13,11 @@ import * as authService from '../services/auth.service.js';
 
 export const register = asyncHandler(async (req, res) => {
   // req.body is already validated and shaped by the validate() middleware
-  const { token, user } = await authService.registerUser(req.body);
+  const result = await authService.registerUser(req.body);
 
   res.status(201).json({
     success: true,
-    data: { token, user },
+    data: result,
   });
 });
 

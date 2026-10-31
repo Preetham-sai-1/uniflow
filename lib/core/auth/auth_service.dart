@@ -2,6 +2,7 @@ import '../api/api_client.dart';
 import '../api/api_endpoints.dart';
 import '../api/api_exceptions.dart';
 import '../../models/role.dart';
+import '../../models/department.dart';
 import 'token_storage.dart';
 
 /// Encapsulates authentication result containing the JWT and sanitized user profile.
@@ -110,6 +111,55 @@ class AuthService {
   /// Check whether a token is stored locally without a network call.
   Future<bool> hasStoredToken() async {
     return await tokenStorage.hasToken();
+  }
+
+  /// Register a new student account.
+  /// New registrations are assigned 'student' role and created with 'PENDING' status.
+  /// Returns registration message on success.
+  Future<String> registerStudent({
+    required String name,
+    required String email,
+    required String password,
+    required String studentId,
+    String? departmentId,
+  }) async {
+    final body = <String, dynamic>{
+      'name': name.trim(),
+      'email': email.trim().toLowerCase(),
+      'password': password,
+      'studentId': studentId.trim(),
+      'role': 'student',
+    };
+    if (departmentId != null && departmentId.isNotEmpty) {
+      body['departmentId'] = departmentId;
+    }
+
+    final response = await apiClient.post(
+      ApiEndpoints.register,
+      body: body,
+      requiresAuth: false,
+    );
+
+    final data = response.data as Map<String, dynamic>;
+    return (data['message'] ??
+            'Registration submitted successfully. Your account is pending administrator approval.')
+        .toString();
+  }
+
+  /// Fetches campus departments from GET /api/departments (public endpoint).
+  Future<List<Department>> fetchDepartments() async {
+    final response = await apiClient.get(
+      ApiEndpoints.departments,
+      requiresAuth: false,
+    );
+
+    if (response.data is List) {
+      final list = response.data as List<dynamic>;
+      return list
+          .map((item) => Department.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
   }
 
   /// Clears stored JWT token on logout.

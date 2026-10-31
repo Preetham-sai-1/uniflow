@@ -2,6 +2,7 @@ import '../api/api_client.dart';
 import '../api/api_endpoints.dart';
 import '../../models/admin_stats.dart';
 import '../../models/journey_request.dart';
+import '../../models/pending_user.dart';
 
 class AdminRequestsResult {
   final List<JourneyRequest> items;
@@ -89,6 +90,44 @@ class AdminWorkflowService {
       page: currentPage,
       limit: limit,
       pages: pages,
+    );
+  }
+
+  /// Lists all pending student registrations awaiting administrator review.
+  /// Calls GET /api/admin/pending-users.
+  Future<List<PendingUser>> fetchPendingUsers() async {
+    final response = await apiClient.get(
+      ApiEndpoints.adminPendingUsers,
+      requiresAuth: true,
+    );
+
+    if (response.data is List) {
+      final list = response.data as List<dynamic>;
+      return list
+          .map((item) => PendingUser.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  /// Approves a pending student registration.
+  /// Calls PATCH /api/admin/users/:id/approve.
+  Future<void> approveUser(String userId) async {
+    await apiClient.patch(
+      ApiEndpoints.approveUser(userId),
+      requiresAuth: true,
+    );
+  }
+
+  /// Rejects a pending student registration with an optional reason.
+  /// Calls PATCH /api/admin/users/:id/reject.
+  Future<void> rejectUser(String userId, {String? reason}) async {
+    await apiClient.patch(
+      ApiEndpoints.rejectUser(userId),
+      body: {
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      },
+      requiresAuth: true,
     );
   }
 }

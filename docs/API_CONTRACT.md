@@ -212,11 +212,9 @@ Server liveness check. Does not verify database connectivity.
 
 #### `POST /api/auth/register` ✅ IMPLEMENTED [PUBLIC]
 
-Register a new user account.
+Register a new student account.
 
-> **Schema note (Phase 1):** The `department` field was changed from a string name
-> to `departmentId` (ObjectId string) so the backend can resolve and validate the
-> department against the database without ambiguity.
+> **Approval Policy:** All new public account registrations are created with role `student` and `approvalStatus: 'PENDING'`. No active JWT session token is issued at registration. Accounts must be reviewed and approved by an administrator before signing in.
 
 **Request Body:**
 ```json
@@ -233,36 +231,48 @@ Register a new user account.
 | Field | Type | Required | Notes |
 |---|---|:---:|---|
 | `name` | string | Yes | Min 2 chars, max 100 chars |
-| `email` | string | Yes | Must be a valid email; normalized to lowercase; must be unique |
+| `email` | string | Yes | Must be a valid email; normalized to lowercase; unique across database |
 | `password` | string | Yes | Min 8 chars |
-| `role` | string | Yes | One of: `"student"`, `"staff"`, `"admin"` |
+| `role` | string | No | Public registration is restricted to `"student"` |
 | `departmentId` | ObjectId | No | ObjectId of the department (use `GET /api/departments`) |
-| `studentId` | string | No | Student roll number (optional, students only) |
+| `studentId` | string | No | Student roll number (unique across database) |
 
 **Success Response (201):**
 ```json
 {
   "success": true,
   "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "user": {
       "id": "64a1b2c3d4e5f6a7b8c9d0e1",
       "name": "Arjun Sharma",
       "email": "arjun.sharma@college.edu",
       "role": "student",
-      "department": null
-    }
+      "department": "64a1b2c3d4e5f6a7b8c9d0e8",
+      "studentId": "CS2021001",
+      "approvalStatus": "PENDING",
+      "rejectionReason": null,
+      "isActive": true,
+      "createdAt": "2026-10-31T22:00:00.000Z"
+    },
+    "message": "Registration submitted successfully. Your account is pending administrator approval."
   }
 }
 ```
 
-**Possible errors:** `VALIDATION_ERROR`, `CONFLICT` (email already registered)
+**Possible errors:** `VALIDATION_ERROR`, `CONFLICT` (email or studentId already registered)
 
 ---
 
 #### `POST /api/auth/login` ✅ IMPLEMENTED [PUBLIC]
 
-Authenticate an existing user.
+Authenticate an existing user. Only accounts with `approvalStatus: 'APPROVED'` can log in.
+
+**Possible errors:**
+- `VALIDATION_ERROR` (400)
+- `INVALID_TOKEN` (401 - Invalid email or password)
+- `ACCOUNT_PENDING_APPROVAL` (403 - Account registration is pending administrator approval)
+- `ACCOUNT_REJECTED` (403 - Account registration was rejected by administrator)
+- `FORBIDDEN` (403 - Deactivated account)
 
 **Request Body:**
 ```json
@@ -737,6 +747,92 @@ List all requests across all students. Supports filtering by status, service, an
 
 ---
 
+#### `GET /api/admin/pending-users` ✅ IMPLEMENTED [Role: admin]
+
+List all pending student registrations awaiting administrator review.
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "64a1b2c3d4e5f6a7b8c9d010",
+      "name": "Pooja Verma",
+      "email": "pooja.verma@campus.edu",
+      "role": "student",
+      "studentId": "STU-2024-099",
+      "department": {
+        "id": "64a1b2c3d4e5f6a7b8c9d004",
+        "name": "Computer Science & Engineering",
+        "code": "CSE"
+      },
+      "institution": {
+        "id": "64a1b2c3d4e5f6a7b8c9d000",
+        "name": "Apex Institute of Technology",
+        "code": "AIT"
+      },
+      "approvalStatus": "PENDING",
+      "createdAt": "2026-10-31T22:30:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+#### `PATCH /api/admin/users/:id/approve` ✅ IMPLEMENTED [Role: admin]
+
+Approve a pending student registration. Activates the account and allows immediate login.
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "64a1b2c3d4e5f6a7b8c9d010",
+    "name": "Pooja Verma",
+    "email": "pooja.verma@campus.edu",
+    "role": "student",
+    "approvalStatus": "APPROVED",
+    "isActive": true,
+    "approvedAt": "2026-10-31T22:45:00.000Z",
+    "approvedBy": "64a1b2c3d4e5f6a7b8c9d001"
+  }
+}
+```
+
+---
+
+#### `PATCH /api/admin/users/:id/reject` ✅ IMPLEMENTED [Role: admin]
+
+Reject a pending student registration with an optional or required explanation.
+
+**Request Body:**
+```json
+{
+  "reason": "Invalid student ID documentation provided."
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "64a1b2c3d4e5f6a7b8c9d010",
+    "name": "Pooja Verma",
+    "approvalStatus": "REJECTED",
+    "rejectionReason": "Invalid student ID documentation provided.",
+    "isActive": false,
+    "approvedAt": "2026-10-31T22:45:00.000Z",
+    "approvedBy": "64a1b2c3d4e5f6a7b8c9d001"
+  }
+}
+```
+
+---
+
 ### 6.8 Departments
 
 #### `GET /api/departments` ✅ IMPLEMENTED [Authenticated / Public]
@@ -808,6 +904,9 @@ Mark all notifications for the authenticated user as read.
 | GET /api/staff/queue | — | ✓ | ✓ |
 | GET /api/admin/stats | — | — | ✓ |
 | GET /api/admin/journeys | — | — | ✓ |
+| GET /api/admin/pending-users | — | — | ✓ |
+| PATCH /api/admin/users/:id/approve | — | — | ✓ |
+| PATCH /api/admin/users/:id/reject | — | — | ✓ |
 | GET /api/departments | ✓ | ✓ | ✓ |
 | GET /api/notifications | ✓ | ✓ | ✓ |
 | PATCH /api/notifications/:id/read | ✓ | ✓ | ✓ |

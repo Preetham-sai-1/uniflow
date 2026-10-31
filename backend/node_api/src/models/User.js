@@ -18,6 +18,12 @@ export const USER_ROLES = Object.freeze({
   ADMIN: 'admin',
 });
 
+export const APPROVAL_STATUSES = Object.freeze({
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+});
+
 const userSchema = new Schema(
   {
     name: {
@@ -74,6 +80,32 @@ const userSchema = new Schema(
       default: null,
     },
 
+    approvalStatus: {
+      type: String,
+      enum: {
+        values: Object.values(APPROVAL_STATUSES),
+        message: 'Approval status must be one of: PENDING, APPROVED, REJECTED.',
+      },
+      default: APPROVAL_STATUSES.APPROVED,
+    },
+
+    rejectionReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    approvedAt: {
+      type: Date,
+      default: null,
+    },
+
+    approvedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+
     isActive: {
       type: Boolean,
       default: true,
@@ -88,5 +120,7 @@ const userSchema = new Schema(
 // Normalized email index is already unique from the field definition.
 // Add a compound index for role-based queries (e.g. find all staff in institution).
 userSchema.index({ institution: 1, role: 1 });
+userSchema.index({ institution: 1, approvalStatus: 1 });
+userSchema.index({ studentId: 1 }, { unique: true, sparse: true });
 
 export default mongoose.model('User', userSchema);

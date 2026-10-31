@@ -42,6 +42,8 @@ function sanitizeUser(user) {
     institution: user.institution,
     department: user.department ?? null,
     studentId: user.studentId ?? null,
+    approvalStatus: user.approvalStatus ?? 'APPROVED',
+    rejectionReason: user.rejectionReason ?? null,
     isActive: user.isActive,
     createdAt: user.createdAt,
   };
@@ -57,16 +59,22 @@ function sanitizeUser(user) {
  *   This works for the single-institution MVP. Multi-institution support
  *   requires passing institutionId explicitly (future scope).
  *
+ * Security:
+ *   - role: 'student' is strictly enforced on the server.
+ *   - approvalStatus is initialized to 'PENDING'.
+ *   - Duplicate emails and duplicate student IDs are rejected.
+ *   - No active login session / token is issued until approved.
+ *
  * @param {object} params
  * @param {string} params.name
  * @param {string} params.email      - Already normalized to lowercase by Zod
  * @param {string} params.password
- * @param {string} params.role       - One of: student, staff, admin
+ * @param {string} [params.role]     - Ignored; forced to 'student'
  * @param {string} [params.departmentId]
  * @param {string} [params.studentId]
- * @returns {{ token: string, user: object }}
+ * @returns {{ user: object, message: string }}
  */
-export async function registerUser({ name, email, password, role, departmentId, studentId }) {
+export async function registerUser({ name, email, password, departmentId, studentId }) {
   // 1. Resolve institution — find the single active institution for MVP
   const institution = await Institution.findOne({ isActive: true }).lean();
   if (!institution) {
@@ -77,7 +85,32 @@ export async function registerUser({ name, email, password, role, departmentId, 
     );
   }
 
-  // 2. Resolve department if provided
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // 2. Reject duplicate email address
+  const existingEmail = await User.findOne({ email: normalizedEmail }).lean();
+  if (existingEmail) {
+    throw new AppError(409, 'CONFLICT', 'An account with this email address already exists.');
+  }
+
+  // 3. Reject duplicate student ID (if provided)
+  const trimmedStudentId =
+    studentId && typeof studentId === 'string' && studentId.trim().length > 0
+      ? studentId.trim()
+      : null;
+
+  if (trimmedStudentId) {
+    const existingStudentId = await User.findOne({ studentId: trimmedStudentId }).lean();
+    if (existingStudentId) {
+      throw new AppError(
+        409,
+        'CONFLICT',
+        'A student account with this Student ID already exists.'
+      );
+    }
+  }
+
+  // 4. Resolve department if provided
   let department = null;
   if (departmentId) {
     if (!mongoose.isValidObjectId(departmentId)) {
@@ -93,23 +126,26 @@ export async function registerUser({ name, email, password, role, departmentId, 
     }
   }
 
-  // 3. Hash password
+  // 5. Hash password
   const passwordHash = await bcrypt.hash(password, env.BCRYPT_SALT_ROUNDS);
 
-  // 4. Create user — duplicate email will throw a Mongoose 11000 error
-  //    which the global error handler converts to a 409 CONFLICT response.
+  // 6. Create user — Always assign role: 'student', and approvalStatus: 'PENDING'
   const user = await User.create({
-    name,
-    email,
+    name: name.trim(),
+    email: normalizedEmail,
     passwordHash,
     role: 'student',
     institution: institution._id,
     department: department?._id ?? null,
-    studentId: studentId ?? null,
+    studentId: trimmedStudentId,
+    approvalStatus: 'PENDING',
+    isActive: true,
   });
 
-  const token = signToken(user);
-  return { token, user: sanitizeUser(user) };
+  return {
+    user: sanitizeUser(user),
+    message: 'Registration submitted successfully. Your account is pending administrator approval.',
+  };
 }
 
 // ─── Login ────────────────────────────────────────────────────────────────────
@@ -125,14 +161,33 @@ export async function registerUser({ name, email, password, role, departmentId, 
  * @returns {{ token: string, user: object }}
  */
 export async function loginUser({ email, password }) {
+  const normalizedEmail = email.trim().toLowerCase();
   // passwordHash is excluded from results by default; select it explicitly
-  const user = await User.findOne({ email }).select('+passwordHash');
+  const user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
 
   const passwordMatch = user ? await bcrypt.compare(password, user.passwordHash) : false;
 
   if (!user || !passwordMatch) {
     // Identical error for both cases — avoids user enumeration
     throw new AppError(401, 'INVALID_TOKEN', 'Invalid email or password.');
+  }
+
+  // Check approval status — only APPROVED accounts can sign in
+  if (user.approvalStatus === 'PENDING') {
+    throw new AppError(
+      403,
+      'ACCOUNT_PENDING_APPROVAL',
+      'Your account registration is pending administrator approval. Please contact campus administration.'
+    );
+  }
+
+  if (user.approvalStatus === 'REJECTED') {
+    const reasonMsg = user.rejectionReason ? ` Reason: ${user.rejectionReason}` : '';
+    throw new AppError(
+      403,
+      'ACCOUNT_REJECTED',
+      `Your account registration was rejected by the administrator.${reasonMsg}`
+    );
   }
 
   if (!user.isActive) {
