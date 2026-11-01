@@ -42,6 +42,8 @@ function sanitizeUser(user) {
     institution: user.institution,
     department: user.department ?? null,
     studentId: user.studentId ?? null,
+    staffId: user.staffId ?? null,
+    mustChangePassword: user.mustChangePassword ?? false,
     approvalStatus: user.approvalStatus ?? 'APPROVED',
     rejectionReason: user.rejectionReason ?? null,
     isActive: user.isActive,

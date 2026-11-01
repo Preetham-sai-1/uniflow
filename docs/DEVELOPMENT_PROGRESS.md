@@ -324,6 +324,27 @@ All 27 frontend tests passed. Production bundle builds cleanly in 3.5s (`npm run
 
 ---
 
+## Role-Based User Management System
+
+| Deliverable | Status | Notes |
+|---|:---:|---|
+| Admin user listing (`GET /api/admin/users`) | ✅ | RBAC (admin only), filters by role (student/staff), approval status, and search query |
+| Admin user creation (`POST /api/admin/users`) | ✅ | Strictly student and staff accounts (no admin role creation), temporary passwords, bcrypt hashed |
+| Admin role assignment (`PATCH /api/admin/users/:id/role`) | ✅ | Switch between student and staff strictly; admin promotion/demotion barred |
+| Permanent account deletion (`DELETE /api/admin/users/:id`) | ✅ | Users cannot delete themselves, admin accounts protected; historical requests intact |
+| Staff student review (`GET /api/staff/students`) | ✅ | RBAC (staff only), query and search enrolled student accounts |
+| Staff student deletion (`DELETE /api/staff/students/:id`) | ✅ | Staff can only delete student accounts; cannot delete staff or admin accounts |
+| Staff student registrations review (`GET /api/staff/pending-students`) | ✅ | RBAC (staff only), view pending student registrations awaiting verification |
+| Staff student account creation (`POST /api/staff/students`) | ✅ | RBAC (staff only), role forced to `student`, bcrypt hashed, records staff creator ID |
+| Staff student registration approval (`PATCH /api/staff/students/:id/approve`) | ✅ | RBAC (staff only), approves registration, records `approvedBy` & `approvedByRole: 'staff'` |
+| Staff student registration rejection (`PATCH /api/staff/students/:id/reject`) | ✅ | RBAC (staff only), rejects with mandatory/optional reason, records `rejectedBy` & `rejectedByRole: 'staff'` |
+| Audit logging (`UserDeletionAudit`) | ✅ | Tamper-evident audit record capturing actor, target, timestamps, and roles (no credentials) |
+| Flutter Admin User Management (`AdminUserManagementView`) | ✅ | Filter by role/status, search, create student/staff modal, role change modal, delete dialog |
+| Flutter Staff Student Management (`StaffStudentManagementView`) | ✅ | Dual-section layout: Tab A (Registrations, approve/reject dialog) & Tab B (Management, Create Student, search, delete) |
+| Full automated test coverage | ✅ | 134/134 backend tests, 27/27 React tests, 103/103 Flutter tests passing |
+
+---
+
 ## Known Blockers
 
 | Blocker | Impact | Resolution |

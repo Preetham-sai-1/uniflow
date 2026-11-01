@@ -833,6 +833,271 @@ Reject a pending student registration with an optional or required explanation.
 
 ---
 
+#### `GET /api/admin/users` ✅ IMPLEMENTED [Role: admin]
+
+List all user accounts in the institution with optional filtering by role, approval status, and search query.
+
+**Query Parameters:**
+- `role`: Filter by role (`student`, `staff`, `admin`)
+- `approvalStatus`: Filter by approval status (`PENDING`, `APPROVED`, `REJECTED`)
+- `search`: Search query matching name, email, studentId, or staffId
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 50)
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "64a1b2c3d4e5f6a7b8c9d010",
+      "name": "Pooja Verma",
+      "email": "pooja.verma@campus.edu",
+      "role": "student",
+      "studentId": "STU2026099",
+      "staffId": null,
+      "department": { "id": "64a1b2c3d4e5f6a7b8c9d100", "name": "Computer Science", "code": "CSE" },
+      "approvalStatus": "APPROVED",
+      "isActive": true,
+      "createdAt": "2026-10-31T22:45:00.000Z"
+    }
+  ],
+  "pagination": { "total": 1, "page": 1, "limit": 50, "pages": 1 }
+}
+```
+
+---
+
+#### `POST /api/admin/users` ✅ IMPLEMENTED [Role: admin]
+
+Administratively create a student or staff account. Role selection is strictly restricted to `student` and `staff` (admin accounts cannot be created through this endpoint).
+
+**Request Body (Student):**
+```json
+{
+  "name": "Aarav Patel",
+  "email": "aarav.patel@uniflow.edu",
+  "password": "Password123!",
+  "role": "student",
+  "studentId": "STU2026001",
+  "department": "64a1b2c3d4e5f6a7b8c9d100"
+}
+```
+
+**Success Response (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "64a1b2c3d4e5f6a7b8c9d020",
+    "name": "Aarav Patel",
+    "email": "aarav.patel@uniflow.edu",
+    "role": "student",
+    "studentId": "STU2026001",
+    "approvalStatus": "APPROVED",
+    "mustChangePassword": true
+  }
+}
+```
+
+---
+
+#### `PATCH /api/admin/users/:id/role` ✅ IMPLEMENTED [Role: admin]
+
+Change an existing user's role strictly between `student` and `staff`. Admins cannot be demoted or created through this endpoint.
+
+**Request Body:**
+```json
+{
+  "role": "staff",
+  "staffId": "STF-CSE-01"
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "64a1b2c3d4e5f6a7b8c9d020",
+    "name": "Aarav Patel",
+    "role": "staff",
+    "staffId": "STF-CSE-01"
+  }
+}
+```
+
+---
+
+#### `DELETE /api/admin/users/:id` ✅ IMPLEMENTED [Role: admin]
+
+Permanently delete a student or staff account. Users cannot delete themselves, and administrator accounts cannot be deleted. Historical requests and workflow audit entries are preserved.
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "deleted": true,
+    "userId": "64a1b2c3d4e5f6a7b8c9d020",
+    "role": "student",
+    "message": "User account permanently deleted."
+  }
+}
+```
+
+---
+
+#### `GET /api/staff/pending-students` ✅ IMPLEMENTED [Role: staff, admin]
+
+List all pending student registrations awaiting departmental staff review.
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "64a1b2c3d4e5f6a7b8c9d033",
+      "name": "Amit Sharma",
+      "email": "amit.sharma@uniflow.edu",
+      "role": "student",
+      "studentId": "STU2026033",
+      "department": "Computer Science",
+      "approvalStatus": "PENDING",
+      "createdAt": "2026-11-01T20:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+#### `POST /api/staff/students` ✅ IMPLEMENTED [Role: staff, admin]
+
+Staff creates an active student account on behalf of an enrolled student. The `role` is strictly forced to `student` on the server.
+
+**Request Body:**
+```json
+{
+  "name": "Kavita Iyer",
+  "email": "kavita.iyer@uniflow.edu",
+  "password": "Password123!",
+  "studentId": "STU2026044",
+  "department": "64a1b2c3d4e5f6a7b8c9d100"
+}
+```
+
+**Success Response (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "64a1b2c3d4e5f6a7b8c9d044",
+    "name": "Kavita Iyer",
+    "email": "kavita.iyer@uniflow.edu",
+    "role": "student",
+    "studentId": "STU2026044",
+    "approvalStatus": "APPROVED"
+  },
+  "message": "Student account created successfully."
+}
+```
+
+---
+
+#### `PATCH /api/staff/students/:id/approve` ✅ IMPLEMENTED [Role: staff, admin]
+
+Staff approves a pending student registration. Records `approvedBy` (staff user ID), `approvedByRole` ('staff'), and timestamp.
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "64a1b2c3d4e5f6a7b8c9d033",
+      "name": "Amit Sharma",
+      "approvalStatus": "APPROVED"
+    },
+    "message": "User registration approved successfully."
+  }
+}
+```
+
+---
+
+#### `PATCH /api/staff/students/:id/reject` ✅ IMPLEMENTED [Role: staff, admin]
+
+Staff rejects a pending student registration with an optional reason. Records `rejectedBy`, `rejectedByRole`, and timestamp.
+
+**Request Body:**
+```json
+{
+  "reason": "Invalid or expired student ID document."
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "64a1b2c3d4e5f6a7b8c9d033",
+      "name": "Amit Sharma",
+      "approvalStatus": "REJECTED",
+      "rejectionReason": "Invalid or expired student ID document."
+    },
+    "message": "User registration rejected."
+  }
+}
+```
+
+---
+
+#### `GET /api/staff/students` ✅ IMPLEMENTED [Role: staff]
+
+List student accounts for departmental staff review with optional search query.
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "64a1b2c3d4e5f6a7b8c9d020",
+      "name": "Aarav Patel",
+      "email": "aarav.patel@uniflow.edu",
+      "role": "student",
+      "studentId": "STU2026001"
+    }
+  ],
+  "pagination": { "total": 1, "page": 1, "limit": 50, "pages": 1 }
+}
+```
+
+---
+
+#### `DELETE /api/staff/students/:id` ✅ IMPLEMENTED [Role: staff]
+
+Permanently delete a student account by a departmental staff member. Staff cannot delete staff or admin accounts.
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "deleted": true,
+    "userId": "64a1b2c3d4e5f6a7b8c9d020",
+    "role": "student",
+    "message": "Student account permanently deleted."
+  }
+}
+```
+
+---
+
 ### 6.8 Departments
 
 #### `GET /api/departments` ✅ IMPLEMENTED [Authenticated / Public]
@@ -907,6 +1172,16 @@ Mark all notifications for the authenticated user as read.
 | GET /api/admin/pending-users | — | — | ✓ |
 | PATCH /api/admin/users/:id/approve | — | — | ✓ |
 | PATCH /api/admin/users/:id/reject | — | — | ✓ |
+| GET /api/admin/users | — | — | ✓ |
+| POST /api/admin/users | — | — | ✓ |
+| PATCH /api/admin/users/:id/role | — | — | ✓ |
+| DELETE /api/admin/users/:id | — | — | ✓ |
+| GET /api/staff/students | — | ✓ | ✓ |
+| POST /api/staff/students | — | ✓ | ✓ |
+| GET /api/staff/pending-students | — | ✓ | ✓ |
+| PATCH /api/staff/students/:id/approve | — | ✓ | ✓ |
+| PATCH /api/staff/students/:id/reject | — | ✓ | ✓ |
+| DELETE /api/staff/students/:id | — | ✓ | ✓ |
 | GET /api/departments | ✓ | ✓ | ✓ |
 | GET /api/notifications | ✓ | ✓ | ✓ |
 | PATCH /api/notifications/:id/read | ✓ | ✓ | ✓ |

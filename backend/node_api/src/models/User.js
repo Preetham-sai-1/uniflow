@@ -80,6 +80,18 @@ const userSchema = new Schema(
       default: null,
     },
 
+    // Optional — staff employee ID or designation code
+    staffId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    mustChangePassword: {
+      type: Boolean,
+      default: false,
+    },
+
     approvalStatus: {
       type: String,
       enum: {
@@ -106,6 +118,41 @@ const userSchema = new Schema(
       default: null,
     },
 
+    approvedByRole: {
+      type: String,
+      enum: Object.values(USER_ROLES),
+      default: null,
+    },
+
+    rejectedAt: {
+      type: Date,
+      default: null,
+    },
+
+    rejectedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+
+    rejectedByRole: {
+      type: String,
+      enum: Object.values(USER_ROLES),
+      default: null,
+    },
+
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+
+    createdByRole: {
+      type: String,
+      enum: Object.values(USER_ROLES),
+      default: null,
+    },
+
     isActive: {
       type: Boolean,
       default: true,
@@ -122,5 +169,6 @@ const userSchema = new Schema(
 userSchema.index({ institution: 1, role: 1 });
 userSchema.index({ institution: 1, approvalStatus: 1 });
 userSchema.index({ studentId: 1 }, { unique: true, sparse: true });
+userSchema.index({ staffId: 1 }, { unique: true, sparse: true });
 
 export default mongoose.model('User', userSchema);

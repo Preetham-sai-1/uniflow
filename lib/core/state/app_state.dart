@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/admin_stats.dart';
 import '../../models/journey_request.dart';
+import '../../models/managed_user.dart';
 import '../../models/pending_user.dart';
 import '../../models/role.dart';
 import '../../models/service_item.dart';
@@ -74,6 +75,30 @@ class AppState extends ChangeNotifier {
   bool _isLoadingPendingUsers = false;
   bool _hasLoadedPendingUsers = false;
   String? _pendingUsersError;
+
+  // Managed Users State (Admin)
+  List<ManagedUser> _managedUsers = [];
+  bool _isLoadingManagedUsers = false;
+  bool _hasLoadedManagedUsers = false;
+  String? _managedUsersError;
+  int _managedUsersTotal = 0;
+  int _managedUsersPages = 1;
+  int _managedUsersPage = 1;
+
+  // Staff Student Management State
+  List<ManagedUser> _staffStudents = [];
+  bool _isLoadingStaffStudents = false;
+  bool _hasLoadedStaffStudents = false;
+  String? _staffStudentsError;
+  int _staffStudentsTotal = 0;
+  int _staffStudentsPages = 1;
+  int _staffStudentsPage = 1;
+
+  // Staff Pending Student Registrations State
+  List<PendingUser> _staffPendingStudents = [];
+  bool _isLoadingStaffPendingStudents = false;
+  bool _hasLoadedStaffPendingStudents = false;
+  String? _staffPendingStudentsError;
 
   AppState({
     AuthService? authService,
@@ -177,6 +202,28 @@ class AppState extends ChangeNotifier {
   bool get hasLoadedPendingUsers => _hasLoadedPendingUsers;
   String? get pendingUsersError => _pendingUsersError;
 
+  List<ManagedUser> get managedUsers => List.unmodifiable(_managedUsers);
+  bool get isLoadingManagedUsers => _isLoadingManagedUsers;
+  bool get hasLoadedManagedUsers => _hasLoadedManagedUsers;
+  String? get managedUsersError => _managedUsersError;
+  int get managedUsersTotal => _managedUsersTotal;
+  int get managedUsersPages => _managedUsersPages;
+  int get managedUsersPage => _managedUsersPage;
+
+  List<ManagedUser> get staffStudents => List.unmodifiable(_staffStudents);
+  bool get isLoadingStaffStudents => _isLoadingStaffStudents;
+  bool get hasLoadedStaffStudents => _hasLoadedStaffStudents;
+  String? get staffStudentsError => _staffStudentsError;
+  int get staffStudentsTotal => _staffStudentsTotal;
+  int get staffStudentsPages => _staffStudentsPages;
+  int get staffStudentsPage => _staffStudentsPage;
+
+  List<PendingUser> get staffPendingStudents =>
+      List.unmodifiable(_staffPendingStudents);
+  bool get isLoadingStaffPendingStudents => _isLoadingStaffPendingStudents;
+  bool get hasLoadedStaffPendingStudents => _hasLoadedStaffPendingStudents;
+  String? get staffPendingStudentsError => _staffPendingStudentsError;
+
   void setRole(UserRole role) {
     _currentRole = role;
     switch (role) {
@@ -266,6 +313,21 @@ class AppState extends ChangeNotifier {
     _pendingUsers = [];
     _hasLoadedPendingUsers = false;
     _pendingUsersError = null;
+    _managedUsers = [];
+    _hasLoadedManagedUsers = false;
+    _managedUsersError = null;
+    _managedUsersTotal = 0;
+    _managedUsersPages = 1;
+    _managedUsersPage = 1;
+    _staffStudents = [];
+    _hasLoadedStaffStudents = false;
+    _staffStudentsError = null;
+    _staffStudentsTotal = 0;
+    _staffStudentsPages = 1;
+    _staffStudentsPage = 1;
+    _staffPendingStudents = [];
+    _hasLoadedStaffPendingStudents = false;
+    _staffPendingStudentsError = null;
     notifyListeners();
   }
 
@@ -699,6 +761,284 @@ class AppState extends ChangeNotifier {
       rethrow;
     } catch (e) {
       _pendingUsersError = 'Failed to reject user. Please try again.';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Loads managed users for administrator oversight from GET /api/admin/users.
+  Future<void> loadManagedUsers({
+    bool forceRefresh = false,
+    String? role,
+    String? approvalStatus,
+    String? search,
+    int page = 1,
+  }) async {
+    if (_isLoadingManagedUsers) return;
+    if (!forceRefresh && _hasLoadedManagedUsers && search == null && role == null && approvalStatus == null && page == _managedUsersPage) {
+      return;
+    }
+
+    _isLoadingManagedUsers = true;
+    _managedUsersError = null;
+    notifyListeners();
+
+    try {
+      final result = await adminWorkflowService.fetchUsers(
+        role: role,
+        approvalStatus: approvalStatus,
+        search: search,
+        page: page,
+      );
+      _managedUsers = result.items;
+      _managedUsersTotal = result.total;
+      _managedUsersPages = result.pages;
+      _managedUsersPage = result.page;
+      _hasLoadedManagedUsers = true;
+      _managedUsersError = null;
+    } on ApiException catch (e) {
+      _managedUsersError = e.message;
+    } catch (e) {
+      _managedUsersError = 'Unable to load user accounts. Please check connectivity.';
+    } finally {
+      _isLoadingManagedUsers = false;
+      notifyListeners();
+    }
+  }
+
+  /// Administratively creates a student or staff account.
+  Future<ManagedUser> createManagedUser({
+    required String name,
+    required String email,
+    required String password,
+    required String role,
+    String? departmentId,
+    String? studentId,
+    String? staffId,
+  }) async {
+    try {
+      final newUser = await adminWorkflowService.createUser(
+        name: name,
+        email: email,
+        password: password,
+        role: role,
+        departmentId: departmentId,
+        studentId: studentId,
+        staffId: staffId,
+      );
+      _managedUsers.insert(0, newUser);
+      _managedUsersTotal += 1;
+      notifyListeners();
+      return newUser;
+    } on ApiException catch (e) {
+      _managedUsersError = e.message;
+      notifyListeners();
+      rethrow;
+    } catch (e) {
+      _managedUsersError = 'Failed to create user account. Please try again.';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Changes a user's role between student and staff.
+  Future<ManagedUser> updateManagedUserRole({
+    required String userId,
+    required String newRole,
+    String? studentId,
+    String? staffId,
+    String? departmentId,
+  }) async {
+    try {
+      final updated = await adminWorkflowService.changeUserRole(
+        userId: userId,
+        newRole: newRole,
+        studentId: studentId,
+        staffId: staffId,
+        departmentId: departmentId,
+      );
+      final index = _managedUsers.indexWhere((u) => u.id == userId);
+      if (index != -1) {
+        _managedUsers[index] = updated;
+      }
+      notifyListeners();
+      return updated;
+    } on ApiException catch (e) {
+      _managedUsersError = e.message;
+      notifyListeners();
+      rethrow;
+    } catch (e) {
+      _managedUsersError = 'Failed to update user role. Please try again.';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Permanently deletes a user account (Admin).
+  Future<void> deleteManagedUser(String userId) async {
+    try {
+      await adminWorkflowService.deleteUser(userId);
+      _managedUsers.removeWhere((u) => u.id == userId);
+      _managedUsersTotal = (_managedUsersTotal - 1).clamp(0, 999999);
+      notifyListeners();
+    } on ApiException catch (e) {
+      _managedUsersError = e.message;
+      notifyListeners();
+      rethrow;
+    } catch (e) {
+      _managedUsersError = 'Failed to delete user account. Please try again.';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Loads student accounts for staff review from GET /api/staff/students.
+  Future<void> loadStaffStudents({
+    bool forceRefresh = false,
+    String? search,
+    String? approvalStatus,
+    int page = 1,
+  }) async {
+    if (_isLoadingStaffStudents) return;
+    if (!forceRefresh &&
+        _hasLoadedStaffStudents &&
+        search == null &&
+        approvalStatus == null &&
+        page == _staffStudentsPage) {
+      return;
+    }
+
+    _isLoadingStaffStudents = true;
+    _staffStudentsError = null;
+    notifyListeners();
+
+    try {
+      final result = await staffWorkflowService.fetchStudents(
+        search: search,
+        approvalStatus: approvalStatus,
+        page: page,
+      );
+      _staffStudents = result.items;
+      _staffStudentsTotal = result.total;
+      _staffStudentsPages = result.pages;
+      _staffStudentsPage = result.page;
+      _hasLoadedStaffStudents = true;
+      _staffStudentsError = null;
+    } on ApiException catch (e) {
+      _staffStudentsError = e.message;
+    } catch (e) {
+      _staffStudentsError = 'Unable to load student accounts. Please check connectivity.';
+    } finally {
+      _isLoadingStaffStudents = false;
+      notifyListeners();
+    }
+  }
+
+  /// Loads pending student registrations awaiting staff review from GET /api/staff/pending-students.
+  Future<void> loadStaffPendingStudents({bool forceRefresh = false}) async {
+    if (_isLoadingStaffPendingStudents) return;
+    if (!forceRefresh && _hasLoadedStaffPendingStudents) return;
+
+    _isLoadingStaffPendingStudents = true;
+    _staffPendingStudentsError = null;
+    notifyListeners();
+
+    try {
+      final list = await staffWorkflowService.fetchPendingStudents();
+      _staffPendingStudents = list;
+      _hasLoadedStaffPendingStudents = true;
+      _staffPendingStudentsError = null;
+    } on ApiException catch (e) {
+      _staffPendingStudentsError = e.message;
+    } catch (e) {
+      _staffPendingStudentsError =
+          'Unable to load pending student registrations. Please check connectivity.';
+    } finally {
+      _isLoadingStaffPendingStudents = false;
+      notifyListeners();
+    }
+  }
+
+  /// Creates a student account on behalf of a student (Staff).
+  Future<ManagedUser> createStaffStudent({
+    required String name,
+    required String email,
+    required String password,
+    required String studentId,
+    String? departmentId,
+  }) async {
+    try {
+      final newUser = await staffWorkflowService.createStudent(
+        name: name,
+        email: email,
+        password: password,
+        studentId: studentId,
+        departmentId: departmentId,
+      );
+      _staffStudents.insert(0, newUser);
+      _staffStudentsTotal += 1;
+      notifyListeners();
+      return newUser;
+    } on ApiException catch (e) {
+      _staffStudentsError = e.message;
+      notifyListeners();
+      rethrow;
+    } catch (e) {
+      _staffStudentsError = 'Failed to create student account. Please try again.';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Approves a pending student registration (Staff).
+  Future<void> approveStaffPendingStudent(String studentId) async {
+    _staffPendingStudentsError = null;
+    try {
+      await staffWorkflowService.approveStudent(studentId);
+      _staffPendingStudents.removeWhere((u) => u.id == studentId);
+      notifyListeners();
+    } on ApiException catch (e) {
+      _staffPendingStudentsError = e.message;
+      notifyListeners();
+      rethrow;
+    } catch (e) {
+      _staffPendingStudentsError = 'Failed to approve student registration. Please try again.';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Rejects a pending student registration with an optional reason (Staff).
+  Future<void> rejectStaffPendingStudent(String studentId, {String? reason}) async {
+    _staffPendingStudentsError = null;
+    try {
+      await staffWorkflowService.rejectStudent(studentId, reason: reason);
+      _staffPendingStudents.removeWhere((u) => u.id == studentId);
+      notifyListeners();
+    } on ApiException catch (e) {
+      _staffPendingStudentsError = e.message;
+      notifyListeners();
+      rethrow;
+    } catch (e) {
+      _staffPendingStudentsError = 'Failed to reject student registration. Please try again.';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Permanently deletes a student account (Staff).
+  Future<void> deleteStaffStudent(String studentId) async {
+    try {
+      await staffWorkflowService.deleteStudent(studentId);
+      _staffStudents.removeWhere((u) => u.id == studentId);
+      _staffStudentsTotal = (_staffStudentsTotal - 1).clamp(0, 999999);
+      notifyListeners();
+    } on ApiException catch (e) {
+      _staffStudentsError = e.message;
+      notifyListeners();
+      rethrow;
+    } catch (e) {
+      _staffStudentsError = 'Failed to delete student account. Please try again.';
       notifyListeners();
       rethrow;
     }

@@ -281,6 +281,12 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
                         onPressed: () => _fetchData(forceRefresh: true),
                       ),
                       TextButton.icon(
+                        icon: const Icon(Icons.manage_accounts_outlined, size: 16),
+                        label: const Text('Manage Users'),
+                        onPressed: () =>
+                            widget.onNavigateTab(1), // User Management Tab
+                      ),
+                      TextButton.icon(
                         icon: const Icon(Icons.analytics_outlined, size: 16),
                         label: const Text('View Full Analytics'),
                         onPressed: () =>
@@ -599,11 +605,22 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
                 ),
               ],
             ),
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded, size: 20),
-              tooltip: 'Refresh pending accounts',
-              onPressed: () =>
-                  appState.loadPendingUsers(forceRefresh: true),
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              children: [
+                TextButton.icon(
+                  icon: const Icon(Icons.people_outline_rounded, size: 16),
+                  label: const Text('View All Users'),
+                  onPressed: () => widget.onNavigateTab(1),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded, size: 20),
+                  tooltip: 'Refresh pending accounts',
+                  onPressed: () =>
+                      appState.loadPendingUsers(forceRefresh: true),
+                ),
+              ],
             ),
           ],
         ),

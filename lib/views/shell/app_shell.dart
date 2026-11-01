@@ -5,8 +5,10 @@ import '../../models/role.dart';
 import '../../widgets/brand_logo.dart';
 import '../admin/admin_analytics_view.dart';
 import '../admin/admin_dashboard_view.dart';
+import '../admin/admin_user_management_view.dart';
 import '../profile/profile_view.dart';
 import '../staff/staff_queue_view.dart';
+import '../staff/staff_student_management_view.dart';
 import '../student/my_requests_view.dart';
 import '../student/services_catalogue_view.dart';
 import '../student/student_dashboard_view.dart';
@@ -263,6 +265,7 @@ class _AppShellState extends State<AppShell> {
         return [
           StaffQueueView(appState: widget.appState, showHistoryOnly: false),
           StaffQueueView(appState: widget.appState, showHistoryOnly: true),
+          StaffStudentManagementView(appState: widget.appState),
           ProfileView(appState: widget.appState, onSignOut: widget.onSignOut),
         ];
 
@@ -272,6 +275,7 @@ class _AppShellState extends State<AppShell> {
             appState: widget.appState,
             onNavigateTab: (index) => setState(() => _currentIndex = index),
           ),
+          AdminUserManagementView(appState: widget.appState),
           AdminAnalyticsView(appState: widget.appState),
           ProfileView(appState: widget.appState, onSignOut: widget.onSignOut),
         ];
@@ -311,6 +315,10 @@ class _AppShellState extends State<AppShell> {
               icon: Icons.history_rounded,
               selectedIcon: Icons.history_edu_rounded),
           _NavDestination(
+              label: 'Students',
+              icon: Icons.school_outlined,
+              selectedIcon: Icons.school_rounded),
+          _NavDestination(
               label: 'Profile',
               icon: Icons.person_outline_rounded,
               selectedIcon: Icons.person_rounded),
@@ -322,6 +330,10 @@ class _AppShellState extends State<AppShell> {
               label: 'Oversight',
               icon: Icons.dashboard_outlined,
               selectedIcon: Icons.dashboard_rounded),
+          _NavDestination(
+              label: 'Users',
+              icon: Icons.manage_accounts_outlined,
+              selectedIcon: Icons.manage_accounts_rounded),
           _NavDestination(
               label: 'Analytics',
               icon: Icons.insights_rounded,
